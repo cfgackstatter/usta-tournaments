@@ -81,25 +81,25 @@ streamlit run main.py -- --webapp
 
 - `data/`: Directory for storing tournament data
 
- - `raw/`: Raw JSON responses from the API
+  - `raw/`: Raw JSON responses from the API
 
- - `processed/`: Processed Parquet files with timestamps
+  - `processed/`: Processed Parquet files with timestamps
 
- - `tournaments.parquet`: Main tournament data file
+  - `tournaments.parquet`: Main tournament data file
 
- - `tournaments_slim.parquet`: Optimized version without the bulky data column
+  - `tournaments_slim.parquet`: Optimized version without the bulky data column
 
 - `scraper/`: Code for fetching tournament data
 
- - `tournament_scraper.py`: Handles API requests to fetch tournament data
+  - `tournament_scraper.py`: Handles API requests to fetch tournament data
 
 - `webapp/`: Web application code
 
- - `app.py`: Streamlit application for displaying tournaments
+  - `app.py`: Streamlit application for displaying tournaments
 
 - `static/`: Static assets
 
- - `style.css`: CSS styles for the web application
+  - `style.css`: CSS styles for the web application
 
 ## Technologies Used
 
