@@ -1,0 +1,281 @@
+"""
+Web application module for USTA Tournament Map.
+
+This module provides a Streamlit-based web interface for browsing and filtering
+USTA tournament data on an interactive map.
+"""
+import logging
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, timedelta
+
+import streamlit as st
+import folium
+from folium.plugins import MarkerCluster
+from streamlit_folium import folium_static
+import pandas as pd
+import json
+
+from data.data_manager import DataManager
+
+# Configure logger
+logger = logging.getLogger(__name__)
+
+def load_css(css_file_path):
+    """
+    Load CSS from a file and inject it into the Streamlit app.
+    
+    Args:
+        css_file_path: Path to the CSS file
+        
+    Returns:
+        None
+    """
+    with open(css_file_path, "r") as f:
+        css = f.read()
+        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+class TournamentApp:
+    """
+    Web application for displaying USTA tournaments on an interactive map.
+    
+    This class handles the Streamlit web interface, including filters, map display,
+    and tournament listings.
+    """
+    
+    def __init__(self) -> None:
+        """Initialize the tournament application with a data manager."""
+        self.data_manager = DataManager()
+        logger.debug("TournamentApp initialized")
+    
+    def run(self) -> None:
+        """
+        Run the Streamlit web application.
+        
+        Sets up the page layout, filters, map, and tournament table.
+        
+        Returns:
+            None
+        """
+        # Configure page settings with responsive layout
+        st.set_page_config(
+            page_title="USTA Tournament Map",
+            page_icon="🎾",
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
+
+        # Load CSS from external file
+        load_css("static/style.css")
+        
+        st.title("🎾 USTA Tournaments")
+        
+        # Process filters and load data
+        filters, tournaments_df = self._handle_filters()
+        
+        # Display map and tournament table
+        self._display_map(tournaments_df)
+        self._display_tournament_table(tournaments_df)
+    
+    def _handle_filters(self) -> Tuple[Dict[str, Any], pd.DataFrame]:
+        """
+        Handle filter controls and load filtered tournament data.
+        
+        Creates sidebar filter controls, processes user selections, and loads
+        the filtered tournament data.
+        
+        Returns:
+            Tuple containing the filter dictionary and filtered DataFrame
+        """
+        filters = {}
+        
+        # Add filters in the sidebar
+        with st.sidebar:
+            st.header("Filter Tournaments")
+            
+            # Date range filter
+            st.subheader("Date Range")
+            today = datetime.now()
+            start_date = st.date_input(
+                "Start Date",
+                today
+            )
+            end_date = st.date_input(
+                "End Date",
+                today + timedelta(days=30)
+            )
+            
+            # Initialize filters with date range
+            if start_date:
+                filters['start_date'] = start_date
+                logger.debug(f"Added start_date filter: {start_date}")
+            if end_date:
+                filters['end_date'] = end_date
+                logger.debug(f"Added end_date filter: {end_date}")
+            
+            # Get tournaments from Parquet file first to extract types
+            initial_df = self.data_manager.get_tournaments(filters, use_slim=True)
+            logger.debug(f"Loaded {len(initial_df)} tournaments for type filtering")
+            
+            # Get unique tournament types from the loaded data
+            if not initial_df.empty and 'tournament_type' in initial_df.columns:
+                # Extract unique values and sort them
+                unique_types = sorted(initial_df['tournament_type'].unique())
+                # Capitalize each type for display
+                tournament_types = ["All"] + [t_type.capitalize() for t_type in unique_types]
+                logger.debug(f"Found tournament types: {unique_types}")
+            else:
+                # Fallback if no data is available
+                tournament_types = ["All", "Adult", "Junior", "Wheelchair"]
+                logger.debug("Using default tournament types")
+            
+            # Tournament type filter
+            st.subheader("Tournament Type")
+            selected_type = st.selectbox("Select Tournament Type", tournament_types)
+            
+            # Update filters with selected type
+            if selected_type and selected_type != "All":
+                filters['tournament_type'] = selected_type.lower()
+                logger.debug(f"Added tournament_type filter: {selected_type.lower()}")
+        
+        # Get tournaments with all filters applied
+        tournaments_df = self.data_manager.get_tournaments(filters, use_slim=True)
+        logger.info(f"Loaded {len(tournaments_df)} tournaments with filters: {filters}")
+        
+        return filters, tournaments_df
+    
+    def _display_map(self, tournaments_df: pd.DataFrame) -> None:
+        """
+        Display an interactive map with tournament markers.
+        
+        Args:
+            tournaments_df: DataFrame containing tournament data
+            
+        Returns:
+            None
+        """        
+        # Create map centered on US with responsive sizing
+        map_height = 500
+        m = folium.Map(location=[39.8283, -98.5795], zoom_start=4)
+        
+        # Add marker cluster for better performance with many markers
+        marker_cluster = MarkerCluster().add_to(m)
+        
+        # Add markers for each tournament
+        if not tournaments_df.empty:
+            marker_count = 0
+            for _, row in tournaments_df.iterrows():
+                if pd.notna(row['latitude']) and pd.notna(row['longitude']):
+                    # Format dates (date only, no time or timezone)
+                    start_date = self._format_date_only(row['start_date'])
+                    end_date = self._format_date_only(row['end_date'])
+                    
+                    # Capitalize tournament type
+                    tournament_type = row['tournament_type'].capitalize() if pd.notna(row['tournament_type']) else ''
+
+                    # Get tournament URL and full location
+                    tournament_url = row.get('tournament_url', '#')
+                    full_location = row.get('full_location', row['location'])
+                    
+                    # Create popup content with clickable link
+                    popup_content = f"""
+                    <h4><a href="{tournament_url}" target="_blank">{row['name']}</a></h4>
+                    <b>Starts:</b> {start_date}<br>
+                    <b>Ends:</b> {end_date}<br>
+                    <b>Location:</b> {full_location}<br>
+                    <b>Type:</b> {tournament_type}<br>
+                    """
+                    
+                    # Add marker
+                    folium.Marker(
+                        location=[row['latitude'], row['longitude']],
+                        popup=folium.Popup(popup_content, max_width=300),
+                        icon=folium.Icon(color='green', icon='info-sign')
+                    ).add_to(marker_cluster)
+                    marker_count += 1
+            
+            logger.info(f"Added {marker_count} markers to map")
+        
+        # Get the HTML representation of the map
+        map_html = m._repr_html_()
+        
+        # Create a responsive wrapper with custom CSS
+        html = f"""
+        <style>
+        .folium-map {{
+            width: 100%;
+            height: {map_height}px;
+            margin: 0 auto;
+        }}
+        </style>
+        <div class="folium-map">
+            {map_html}
+        </div>
+        """
+        
+        # Use the HTML component for full width
+        st.components.v1.html(html, height=map_height+10)
+    
+    def _display_tournament_table(self, tournaments_df: pd.DataFrame) -> None:
+        """
+        Display a table of tournaments below the map.
+        
+        Args:
+            tournaments_df: DataFrame containing tournament data
+            
+        Returns:
+            None
+        """
+        if not tournaments_df.empty:
+            # Create a copy of the dataframe for display
+            display_df = tournaments_df[['name', 'tournament_url', 'start_date', 'end_date', 'full_location', 'tournament_type']].copy()
+            
+            # Format dates (date only)
+            display_df['start_date'] = display_df['start_date'].apply(self._format_date_only)
+            display_df['end_date'] = display_df['end_date'].apply(self._format_date_only)
+            
+            # Capitalize tournament type
+            display_df['tournament_type'] = display_df['tournament_type'].str.capitalize()
+
+            # Create clickable links for tournament names
+            display_df['name'] = display_df.apply(
+                lambda row: f'<a href="{row["tournament_url"]}" target="_blank">{row["name"]}</a>' 
+                if pd.notna(row["tournament_url"]) else row["name"], 
+                axis=1
+            )
+
+            # Create final display dataframe
+            final_df = display_df[['name', 'start_date', 'end_date', 'full_location', 'tournament_type']]
+            
+            # Rename columns for display
+            final_df = final_df.rename(columns={
+                'name': 'Name',
+                'start_date': 'Start Date',
+                'end_date': 'End Date',
+                'full_location': 'Location',
+                'tournament_type': 'Type'
+            })
+            
+            # Display the dataframe with HTML rendering enabled
+            st.write(final_df.to_html(escape=False, index=False), unsafe_allow_html=True)
+        else:
+            st.info("No tournaments found with the current filters.")
+    
+    @staticmethod
+    def _format_date_only(dt_value: Any) -> str:
+        """
+        Format a datetime value as date only (YYYY-MM-DD).
+        
+        Args:
+            dt_value: Datetime value to format
+            
+        Returns:
+            Formatted date string
+        """
+        if pd.notna(dt_value):
+            try:
+                dt = pd.to_datetime(dt_value)
+                return dt.strftime('%Y-%m-%d')
+            except Exception as e:
+                logger.error(f"Error formatting date {dt_value}: {e}")
+                return str(dt_value)
+        return 'N/A'
