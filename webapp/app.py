@@ -121,8 +121,7 @@ class TournamentApp:
             if not initial_df.empty and 'tournament_type' in initial_df.columns:
                 # Extract unique values and sort them
                 unique_types = sorted(initial_df['tournament_type'].unique())
-                # Capitalize each type for display
-                tournament_types = ["All"] + [t_type.capitalize() for t_type in unique_types]
+                tournament_types = ["All"] + [t_type for t_type in unique_types]
                 logger.debug(f"Found tournament types: {unique_types}")
             else:
                 # Fallback if no data is available
@@ -131,19 +130,31 @@ class TournamentApp:
             
             # Tournament type filter
             st.subheader("Tournament Type")
-            selected_type = st.selectbox("Select Tournament Type", tournament_types)
+            display_names = {
+                "adult": "Adult",
+                "junior": "Junior",
+                "wheelchair": "Wheelchair",
+                "wtnPlay": "WTN",
+                "": "<Empty>"
+            }
+            selected_type = st.selectbox(
+                "Select Tournament Type",
+                tournament_types,
+                format_func=lambda x: display_names.get(x, x)
+            )
             
             # Update filters with selected type
-            if selected_type and selected_type != "All":
-                filters['tournament_type'] = selected_type.lower()
-                logger.debug(f"Added tournament_type filter: {selected_type.lower()}")
+            if selected_type == "":
+                filters['tournament_type'] = ''
+            elif selected_type and selected_type != "All":
+                filters['tournament_type'] = selected_type
+                logger.debug(f"Added tournament_type filter: {selected_type}")
 
             # Get unique tournament levels
             if not initial_df.empty and 'tournament_level' in initial_df.columns:
                 # Extract unique values and sort them
                 unique_levels = sorted([level for level in initial_df['tournament_level'].unique() if pd.notna(level)])
-                # Capitalize each level for display
-                levels_for_display = [level.capitalize() for level in unique_levels]
+                levels_for_display = [level for level in unique_levels]
             else:
                 # Fallback if no data is available
                 unique_levels = []
@@ -161,9 +172,8 @@ class TournamentApp:
                 # Update filters with selected levels
                 if selected_levels and len(selected_levels) < len(levels_for_display):
                     # Only add filter if not all levels are selected
-                    selected_levels_lower = [level.lower() for level in selected_levels]
-                    filters['tournament_level'] = selected_levels_lower
-                    logger.debug(f"Added tournament_level filter: {selected_levels_lower}")
+                    filters['tournament_level'] = selected_levels
+                    logger.debug(f"Added tournament_level filter: {selected_levels}")
         
         # Get tournaments with all filters applied
         tournaments_df = self.data_manager.get_tournaments(filters, use_slim=True)
@@ -197,8 +207,8 @@ class TournamentApp:
                     start_date = self._format_date_only(row['start_date'])
                     end_date = self._format_date_only(row['end_date'])
                     
-                    # Capitalize tournament type
-                    tournament_type = row['tournament_type'].capitalize() if pd.notna(row['tournament_type']) else ''
+                    # Load tournament type
+                    tournament_type = row['tournament_type'] if pd.notna(row['tournament_type']) else ''
 
                     # Get tournament URL and full location
                     tournament_url = row.get('tournament_url', '#')
@@ -223,7 +233,7 @@ class TournamentApp:
                     <b>Ends:</b> {end_date}<br>
                     <b>Location:</b> {full_location}<br>
                     <b>Type:</b> {tournament_type}<br>
-                    <b>Level:</b> {row.get('tournament_level', '').capitalize()}<br>
+                    <b>Level:</b> {row.get('tournament_level', '')}<br>
                     <b>Status:</b> {registration_status}<br>
                     """
                     
@@ -268,15 +278,25 @@ class TournamentApp:
             None
         """
         if not tournaments_df.empty:
+            # Create a display mapping dictionary for tournament types
+            display_names = {
+                "adult": "Adult",
+                "junior": "Junior",
+                "wheelchair": "Wheelchair",
+                "wtnPlay": "WTN",
+            }
+
             # Create a copy of the dataframe for display
             display_df = tournaments_df.copy()
             
             # Format dates (date only)
             display_df['start_date'] = display_df['start_date'].apply(self._format_date_only)
             display_df['end_date'] = display_df['end_date'].apply(self._format_date_only)
-            
-            # Capitalize tournament type
-            display_df['tournament_type'] = display_df['tournament_type'].str.capitalize()
+
+            # Apply the display mapping to tournament_type
+            display_df['tournament_type_display'] = display_df['tournament_type'].apply(
+                lambda x: display_names.get(x, x) if pd.notna(x) else ''
+            )
 
             # Create clickable links for tournament names
             display_df['name'] = display_df.apply(
@@ -286,7 +306,7 @@ class TournamentApp:
             )
 
             # Create final display dataframe
-            final_df = display_df[['name', 'start_date', 'end_date', 'full_location', 'tournament_type', 'tournament_level']]
+            final_df = display_df[['name', 'start_date', 'end_date', 'full_location', 'tournament_type_display', 'tournament_level']]
             
             # Rename columns for display
             final_df = final_df.rename(columns={
@@ -294,7 +314,7 @@ class TournamentApp:
                 'start_date': 'Start Date',
                 'end_date': 'End Date',
                 'full_location': 'Location',
-                'tournament_type': 'Type',
+                'tournament_type_display': 'Type',
                 'tournament_level': 'Level'
             })
             

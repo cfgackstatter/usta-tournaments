@@ -198,8 +198,11 @@ class DataManager:
                 logger.debug(f"Applying filters: {filters}")
                 initial_count = len(df)
                 
-                if 'tournament_type' in filters and filters['tournament_type']:
-                    df = df[df['tournament_type'].str.contains(filters['tournament_type'], case=False)]
+                if 'tournament_type' in filters:
+                    if filters['tournament_type'] == '':
+                        df = df[(df['tournament_type'].isnull()) | (df['tournament_type'] == '')]
+                    else:
+                        df = df[df['tournament_type'] == filters['tournament_type']]
 
                 if 'tournament_level' in filters and filters['tournament_level']:
                     # Filter for tournaments with levels in the selected list
