@@ -58,6 +58,25 @@ def update_tournaments(max_pages: int = 5, sleep_min: float = 2, sleep_max: floa
     
     logger.info(f"Tournament update completed at {datetime.now()}")
 
+def cleanup_data() -> None:
+    """
+    Clean up data folders by removing files older than 7 days.
+    
+    Delegates to the DataManager to perform the actual cleanup.
+    
+    Returns:
+        None
+    """
+    logger.info(f"Starting data cleanup process at {datetime.now()}")
+    
+    # Initialize data manager
+    data_manager = DataManager()
+    
+    # Perform cleanup
+    data_manager.cleanup_data()
+    
+    logger.info(f"Data cleanup process completed at {datetime.now()}")
+
 def run_webapp() -> None:
     """
     Run the Streamlit web application.
@@ -86,17 +105,21 @@ def main() -> None:
     parser.add_argument('--sleep-min', type=float, default=2, help='Minimum sleep time between requests')
     parser.add_argument('--sleep-max', type=float, default=5, help='Maximum sleep time between requests')
     parser.add_argument('--webapp', action='store_true', help='Run the web application')
+    parser.add_argument('--clean-up', action='store_true', help='Clean up data older than a week')
     
     args = parser.parse_args()
     
     if args.update:
         update_tournaments(args.max_pages, args.sleep_min, args.sleep_max)
+
+    if args.clean_up:
+        cleanup_data()
     
     if args.webapp:
         run_webapp()
     
     # If no arguments provided, show help
-    if not (args.update or args.webapp):
+    if not (args.update or args.webapp or args.clean_up):
         parser.print_help()
 
 if __name__ == "__main__":
