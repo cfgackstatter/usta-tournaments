@@ -154,7 +154,7 @@ class TournamentApp:
                 selected_levels = st.multiselect(
                     "Select Tournament Levels",
                     options=levels_for_display,
-                    default=levels_for_display  # All selected by default
+                    default=None  # All selected by default
                 )
 
                 # Update filters with selected levels
