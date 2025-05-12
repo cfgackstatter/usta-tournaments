@@ -160,14 +160,23 @@ class TournamentApp:
                 unique_levels = []
                 levels_for_display = []
 
+            # Initialize session state for selected levels if not already present
+            if 'selected_levels' not in st.session_state:
+                st.session_state.selected_levels = []
+
             # Tournament level filter (multi-select)
             if levels_for_display:
                 st.subheader("Tournament Level")
+
                 selected_levels = st.multiselect(
                     "Select Tournament Levels",
                     options=levels_for_display,
-                    default=None  # All selected by default
+                    default=st.session_state.selected_levels,
+                    key="tournament_levels"
                 )
+
+                # Update session state with current selection
+                st.session_state.selected_levels = selected_levels
 
                 # Update filters with selected levels
                 if selected_levels and len(selected_levels) < len(levels_for_display):
