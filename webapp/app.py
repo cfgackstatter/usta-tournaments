@@ -21,6 +21,14 @@ from data.data_manager import DataManager
 # Configure logger
 logger = logging.getLogger(__name__)
 
+display_names = {
+    "adult": "Adult",
+    "junior": "Junior",
+    "wheelchair": "Wheelchair",
+    "wtnPlay": "WTN",
+    "": "<Empty>"
+}
+
 def load_css(css_file_path):
     """
     Load CSS from a file and inject it into the Streamlit app.
@@ -42,7 +50,6 @@ class TournamentApp:
     This class handles the Streamlit web interface, including filters, map display,
     and tournament listings.
     """
-    
     def __init__(self) -> None:
         """Initialize the tournament application with a data manager."""
         self.data_manager = DataManager()
@@ -130,13 +137,6 @@ class TournamentApp:
             
             # Tournament type filter
             st.subheader("Tournament Type")
-            display_names = {
-                "adult": "Adult",
-                "junior": "Junior",
-                "wheelchair": "Wheelchair",
-                "wtnPlay": "WTN",
-                "": "<Empty>"
-            }
             selected_type = st.selectbox(
                 "Select Tournament Type",
                 tournament_types,
@@ -208,7 +208,8 @@ class TournamentApp:
                     end_date = self._format_date_only(row['end_date'])
                     
                     # Load tournament type
-                    tournament_type = row['tournament_type'] if pd.notna(row['tournament_type']) else ''
+                    tournament_type = row.get('tournament_type', '')
+                    tournament_type_display = display_names.get(tournament_type, tournament_type)
 
                     # Get tournament URL and full location
                     tournament_url = row.get('tournament_url', '#')
@@ -232,7 +233,7 @@ class TournamentApp:
                     <b>Starts:</b> {start_date}<br>
                     <b>Ends:</b> {end_date}<br>
                     <b>Location:</b> {full_location}<br>
-                    <b>Type:</b> {tournament_type}<br>
+                    <b>Type:</b> {tournament_type_display.replace('<','&lt;').replace('>','&gt;')}<br>
                     <b>Level:</b> {row.get('tournament_level', '')}<br>
                     <b>Status:</b> {registration_status}<br>
                     """
@@ -278,14 +279,6 @@ class TournamentApp:
             None
         """
         if not tournaments_df.empty:
-            # Create a display mapping dictionary for tournament types
-            display_names = {
-                "adult": "Adult",
-                "junior": "Junior",
-                "wheelchair": "Wheelchair",
-                "wtnPlay": "WTN",
-            }
-
             # Create a copy of the dataframe for display
             display_df = tournaments_df.copy()
             
