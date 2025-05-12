@@ -37,3 +37,6 @@ Thumbs.db
 # Data
 *.parquet
 *.json
+
+# Test Notebook
+Test.ipynb
