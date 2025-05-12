@@ -14,6 +14,7 @@ from folium.plugins import MarkerCluster
 from streamlit_folium import folium_static
 import pandas as pd
 import json
+import pytz
 
 from data.data_manager import DataManager
 
@@ -93,14 +94,14 @@ class TournamentApp:
             st.header("Filter Tournaments")
             
             # Date range filter
-            st.subheader("Date Range")
+            st.subheader("Tournament Start Date")
             today = datetime.now()
             start_date = st.date_input(
-                "Start Date",
+                "From",
                 today
             )
             end_date = st.date_input(
-                "End Date",
+                "To",
                 today + timedelta(days=30)
             )
             
@@ -202,6 +203,18 @@ class TournamentApp:
                     # Get tournament URL and full location
                     tournament_url = row.get('tournament_url', '#')
                     full_location = row.get('full_location', row['location'])
+
+                    # Check registration status
+                    is_closed = self._is_registration_closed(
+                        row.get('entries_close_datetime'), 
+                        row.get('registration_timezone')
+                    )
+
+                    # Set marker color based on registration status
+                    marker_color = 'orange' if is_closed else 'green'
+
+                    # Add registration status to popup
+                    registration_status = "Registration Closed" if is_closed else "Registration Open"
                     
                     # Create popup content with clickable link
                     popup_content = f"""
@@ -211,13 +224,14 @@ class TournamentApp:
                     <b>Location:</b> {full_location}<br>
                     <b>Type:</b> {tournament_type}<br>
                     <b>Level:</b> {row.get('tournament_level', '').capitalize()}<br>
+                    <b>Status:</b> {registration_status}<br>
                     """
                     
                     # Add marker
                     folium.Marker(
                         location=[row['latitude'], row['longitude']],
                         popup=folium.Popup(popup_content, max_width=300),
-                        icon=folium.Icon(color='green', icon='info-sign')
+                        icon=folium.Icon(color=marker_color, icon='info-sign')
                     ).add_to(marker_cluster)
                     marker_count += 1
             
@@ -308,3 +322,45 @@ class TournamentApp:
                 logger.error(f"Error formatting date {dt_value}: {e}")
                 return str(dt_value)
         return 'N/A'
+    
+    def _is_registration_closed(self, close_datetime, timezone_str: str) -> bool:
+        """
+        Check if registration is closed based on close datetime and timezone.
+        
+        Args:
+            close_datetime: The datetime when registration closes
+            timezone_str: The timezone of the close datetime
+            
+        Returns:
+            True if registration is closed, False otherwise
+        """
+        if not close_datetime or pd.isna(close_datetime):
+            return False
+            
+        try:
+            # Parse the close datetime
+            close_dt = pd.to_datetime(close_datetime)
+            
+            # Get the current time in Eastern timezone
+            eastern_tz = pytz.timezone('US/Eastern')
+            current_time = datetime.now(eastern_tz)
+            
+            # Convert close datetime to timezone-aware datetime
+            if timezone_str:
+                try:
+                    # Try to use the provided timezone
+                    tz = pytz.timezone(timezone_str)
+                    close_dt = close_dt.replace(tzinfo=tz)
+                except pytz.exceptions.UnknownTimeZoneError:
+                    # Fall back to UTC if timezone is unknown
+                    close_dt = close_dt.replace(tzinfo=pytz.UTC)
+            else:
+                # Default to UTC if no timezone provided
+                close_dt = close_dt.replace(tzinfo=pytz.UTC)
+                
+            # Compare with current Eastern time
+            return close_dt < current_time
+            
+        except Exception as e:
+            logger.error(f"Error checking registration status: {e}")
+            return False

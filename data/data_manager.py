@@ -88,6 +88,11 @@ class DataManager:
 
                 # Extract tournament level
                 tournament_level = tournament.get('level', {}).get('name', '')
+
+                # Extract registration close datetime
+                registration_restrictions = tournament.get('registrationRestrictions', {})
+                entries_close_datetime = registration_restrictions.get('entriesCloseDateTime', None)
+                registration_timezone = registration_restrictions.get('timeZone', timezone_str)  # Fall back to tournament timezone
                 
                 # Create a processed record
                 processed_record = {
@@ -102,6 +107,8 @@ class DataManager:
                     'location': location,
                     'tournament_type': tournament_type,
                     'tournament_level': tournament_level,
+                    'entries_close_datetime': entries_close_datetime,
+                    'registration_timezone': registration_timezone,
                     'tournament_url': tournament_url,
                     'full_location': full_location,
                     'data': json.dumps(tournament),  # Store full data as JSON string
@@ -200,15 +207,15 @@ class DataManager:
                 
                 if 'start_date' in filters and filters['start_date']:
                     # Convert filter date to datetime for comparison
-                    filter_date = pd.to_datetime(filters['start_date']).date()
+                    filter_start_date = pd.to_datetime(filters['start_date']).date()
                     # Compare only the date part
-                    df = df[df['start_date'].dt.date >= filter_date]
+                    df = df[df['start_date'].dt.date >= filter_start_date]
                 
                 if 'end_date' in filters and filters['end_date']:
                     # Convert filter date to datetime for comparison
-                    filter_date = pd.to_datetime(filters['end_date']).date()
-                    # Compare only the date part
-                    df = df[df['end_date'].dt.date <= filter_date]
+                    filter_end_date = pd.to_datetime(filters['end_date']).date()
+                    # Filter tournaments that START before or on the end date
+                    df = df[df['start_date'].dt.date <= filter_end_date]
 
                 logger.debug(f"Filter reduced dataset from {initial_count} to {len(df)} tournaments")
             
