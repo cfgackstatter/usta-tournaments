@@ -98,10 +98,10 @@ class TournamentApp:
         
         # Add filters in the sidebar
         with st.sidebar:
-            st.header("Filter Tournaments")
+            st.header("Filter")
             
             # Date range filter
-            st.subheader("Tournament Start Date")
+            st.subheader("Start Date")
             today = datetime.now()
             start_date = st.date_input(
                 "From",
@@ -136,9 +136,9 @@ class TournamentApp:
                 logger.debug("Using default tournament types")
             
             # Tournament type filter
-            st.subheader("Tournament Type")
+            st.subheader("Category")
             selected_type = st.selectbox(
-                "Select Tournament Type",
+                "Select Category",
                 tournament_types,
                 format_func=lambda x: display_names.get(x, x)
             )
@@ -166,10 +166,10 @@ class TournamentApp:
 
             # Tournament level filter (multi-select)
             if levels_for_display:
-                st.subheader("Tournament Level")
+                st.subheader("Level")
 
                 selected_levels = st.multiselect(
-                    "Select Tournament Levels",
+                    "Select Levels",
                     options=levels_for_display,
                     default=st.session_state.selected_levels,
                     key="tournament_levels"
