@@ -22,11 +22,26 @@ from data.data_manager import DataManager
 logger = logging.getLogger(__name__)
 
 display_names = {
+    # Tournament types
     "adult": "Adult",
     "junior": "Junior",
     "wheelchair": "Wheelchair",
     "wtnPlay": "WTN",
-    "": "<Empty>"
+    "": "<Empty>",
+
+    # Event genders
+    "boys": "Men/Boys",
+    "girls": "Women/Girls",
+    "coed": "Coed",
+    "mixed": "Mixed",
+
+    # Event types
+    "singles": "Singles",
+    "doubles": "Doubles",
+    "team": "Team",
+
+    # Special case for "All" option
+    "All": "All"
 }
 
 def load_css(css_file_path):
@@ -97,20 +112,23 @@ class TournamentApp:
         filters = {}
         
         # Add filters in the sidebar
-        with st.sidebar:
-            st.header("Filter")
-            
+        with st.sidebar:            
             # Date range filter
             st.subheader("Start Date")
-            today = datetime.now()
-            start_date = st.date_input(
-                "From",
-                today
-            )
-            end_date = st.date_input(
-                "To",
-                today + timedelta(days=30)
-            )
+            date_col1, date_col2 = st.columns(2)
+
+            with date_col1:
+                today = datetime.now()
+                start_date = st.date_input(
+                    "From",
+                    today
+                )
+
+            with date_col2:
+                end_date = st.date_input(
+                    "To",
+                    today + timedelta(days=30)
+                )
             
             # Initialize filters with date range
             if start_date:
@@ -183,6 +201,46 @@ class TournamentApp:
                     # Only add filter if not all levels are selected
                     filters['tournament_level'] = selected_levels
                     logger.debug(f"Added tournament_level filter: {selected_levels}")
+
+            # Get unique event genders and types
+            event_genders = set()
+            event_types = set()
+
+            if not initial_df.empty and 'event_tuples' in initial_df.columns:
+                for tuples in initial_df['event_tuples']:
+                    for gender, event_type in tuples:
+                        if gender:
+                            event_genders.add(gender)
+                        if event_type:
+                            event_types.add(event_type)
+
+            # Event filters
+            st.subheader("Event Filters")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                # Format the gender options using the display dictionary
+                gender_options = ["All"] + sorted(list(event_genders))
+                selected_gender = st.selectbox(
+                    "Gender",
+                    gender_options,
+                    format_func=lambda x: display_names.get(x.lower(), x)
+                )
+                
+                if selected_gender != "All":
+                    filters['event_gender'] = selected_gender
+
+            with col2:
+                # Format the event type options using the display dictionary
+                event_type_options = ["All"] + sorted(list(event_types))
+                selected_event_type = st.selectbox(
+                    "Event Type",
+                    event_type_options,
+                    format_func=lambda x: display_names.get(x.lower(), x)
+                )
+                
+                if selected_event_type != "All":
+                    filters['event_type'] = selected_event_type
         
         # Get tournaments with all filters applied
         tournaments_df = self.data_manager.get_tournaments(filters, use_slim=True)

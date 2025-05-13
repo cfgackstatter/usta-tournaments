@@ -94,6 +94,19 @@ class DataManager:
                 registration_restrictions = tournament.get('registrationRestrictions', {})
                 entries_close_datetime = registration_restrictions.get('entriesCloseDateTime', None)
                 registration_timezone = registration_restrictions.get('timeZone', timezone_str)  # Fall back to tournament timezone
+
+                # Extract event information
+                events = tournament.get('events', [])
+                event_tuples = []
+                for event in events:
+                    division = event.get('division', {})
+                    gender = division.get('gender', '')
+                    event_type = division.get('eventType', '')
+                    if gender and event_type:
+                        event_tuples.append((gender, event_type))
+
+                # Store unique event tuples to avoid duplicates
+                unique_event_tuples = list(set(event_tuples))
                 
                 # Create a processed record
                 processed_record = {
@@ -110,6 +123,7 @@ class DataManager:
                     'tournament_level': tournament_level,
                     'entries_close_datetime': entries_close_datetime,
                     'registration_timezone': registration_timezone,
+                    'event_tuples': json.dumps(unique_event_tuples),
                     'tournament_url': tournament_url,
                     'full_location': full_location,
                     'data': json.dumps(tournament),  # Store full data as JSON string
@@ -193,6 +207,10 @@ class DataManager:
             
             if 'end_date' in df.columns and not pd.api.types.is_datetime64_any_dtype(df['end_date']):
                 df['end_date'] = pd.to_datetime(df['end_date'])
+
+            # Parse events JSON string
+            if 'event_tuples' in df.columns:
+                df['event_tuples'] = df['event_tuples'].apply(lambda x: json.loads(x) if pd.notna(x) else [])
             
             # Apply filters
             if filters:
@@ -208,6 +226,11 @@ class DataManager:
                 if 'tournament_level' in filters and filters['tournament_level']:
                     # Filter for tournaments with levels in the selected list
                     df = df[df['tournament_level'].str.lower().isin([level.lower() for level in filters['tournament_level']])]
+
+                if 'event_gender' in filters and filters['event_gender']:
+                    df = self.filter_by_event(df, gender=filters['event_gender'], event_type=filters.get('event_type'))
+                elif 'event_type' in filters and filters['event_type']:
+                    df = self.filter_by_event(df, event_type=filters['event_type'])
                 
                 if 'start_date' in filters and filters['start_date']:
                     # Convert filter date to datetime for comparison
@@ -228,6 +251,37 @@ class DataManager:
         except Exception as e:
             logger.error(f"Error getting tournaments from Parquet: {e}", exc_info=True)
             return pd.DataFrame()
+        
+    def filter_by_event(self, df: pd.DataFrame, gender: Optional[str] = None, event_type: Optional[str] = None) -> pd.DataFrame:
+        """
+        Filter tournaments by event criteria (gender and/or event type).
+        
+        Args:
+            df: DataFrame containing tournament data
+            gender: Gender filter (e.g., 'Male', 'Female', 'Mixed')
+            event_type: Event type filter (e.g., 'Singles', 'Doubles')
+            
+        Returns:
+            Filtered DataFrame
+        """
+        if not gender and not event_type:
+            return df
+            
+        if 'event_tuples' not in df.columns:
+            logger.warning("event_tuples column not found in DataFrame")
+            return df
+            
+        if gender and event_type:
+            # Filter for tournaments with events matching both gender and event_type
+            mask = df['event_tuples'].apply(lambda tuples: any(t[0] == gender and t[1] == event_type for t in tuples))
+        elif gender:
+            # Filter for tournaments with events matching gender
+            mask = df['event_tuples'].apply(lambda tuples: any(t[0] == gender for t in tuples))
+        else:  # event_type only
+            # Filter for tournaments with events matching event_type
+            mask = df['event_tuples'].apply(lambda tuples: any(t[1] == event_type for t in tuples))
+            
+        return df[mask]
 
     def cleanup_data(self) -> None:
         """
