@@ -1,0 +1,8 @@
+version: 1
+cron:
+  - name: "update-tournament-data"
+    url: "/tasks/update"
+    schedule: "0 */6 * * *"  # Every 6 hours
+  - name: "cleanup-old-data"
+    url: "/tasks/cleanup"
+    schedule: "0 0 * * *"    # Daily at midnight

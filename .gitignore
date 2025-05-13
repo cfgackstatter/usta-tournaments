@@ -40,3 +40,6 @@ Thumbs.db
 
 # Test Notebook
 Test.ipynb
+
+# Elastic Beanstalk .zip
+*.zip

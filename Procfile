@@ -1,0 +1,1 @@
+web: streamlit run main.py --server.port $PORT --server.enableCORS False --browser.serverAddress 0.0.0.0 -- --webapp
