@@ -146,6 +146,20 @@ class DataManager:
                 # Concatenate with new data
                 df = pd.concat([existing_df, df], ignore_index=True)
             
+            # Define cutoff date for 7 days ago
+            cutoff_date = pd.Timestamp(datetime.now() - pd.Timedelta(days=7), tz='US/Eastern')
+
+            # Convert end_date to datetime if it's not already
+            if not pd.api.types.is_datetime64_any_dtype(df['end_date']):
+                df['end_date'] = pd.to_datetime(df['end_date'])
+
+            # Filter out tournaments that ended more than 7 days ago
+            # Keep tournaments that haven't ended yet or ended within the past 7 days
+            initial_count = len(df)
+            df = df[(df['end_date'] >= cutoff_date) | (pd.isna(df['end_date']))]
+            removed_count = initial_count - len(df)
+            logger.info(f"Removed {removed_count} tournaments that ended more than 7 days ago")
+            
             # Save to Parquet file
             df.to_parquet(self.tournaments_file, engine='pyarrow', index=False)
 
@@ -245,6 +259,10 @@ class DataManager:
                     df = df[df['start_date'].dt.date <= filter_end_date]
 
                 logger.debug(f"Filter reduced dataset from {initial_count} to {len(df)} tournaments")
+
+            if 'start_date' in df.columns and not df.empty:
+                df = df.sort_values(by='start_date', ascending=True)
+                logger.debug("Sorted tournaments by start date (ascending)")
             
             return df
             

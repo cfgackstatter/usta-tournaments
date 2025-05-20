@@ -365,6 +365,11 @@ class TournamentApp:
                 axis=1
             )
 
+            if 'start_date' in display_df.columns and not display_df.empty:
+                # Convert back to datetime for proper sorting (since we formatted it as string earlier)
+                temp_start_dates = pd.to_datetime(display_df['start_date'])
+                display_df = display_df.iloc[temp_start_dates.argsort()]
+
             # Create final display dataframe
             final_df = display_df[['name', 'start_date', 'end_date', 'full_location', 'tournament_type_display', 'tournament_level']]
             
