@@ -353,6 +353,10 @@ class TournamentApp:
             display_df['start_date'] = display_df['start_date'].apply(self._format_date_only)
             display_df['end_date'] = display_df['end_date'].apply(self._format_date_only)
 
+            # Cast tournament names to ASCII to prevent rendering issues
+            if 'name' in display_df.columns:
+                display_df['name'] = display_df['name'].apply(lambda x: x.encode('ascii', 'ignore').decode('ascii') if isinstance(x, str) else x)
+
             # Apply the display mapping to tournament_type
             display_df['tournament_type_display'] = display_df['tournament_type'].apply(
                 lambda x: display_names.get(x, x) if pd.notna(x) else ''
@@ -382,6 +386,17 @@ class TournamentApp:
                 'tournament_type_display': 'Type',
                 'tournament_level': 'Level'
             })
+
+            # # Ensure dates are properly formatted as strings without problematic characters
+            # if 'start_date' in final_df.columns:
+            #     final_df['start_date'] = final_df['start_date'].apply(
+            #         lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else ''
+            #     )
+                
+            # if 'end_date' in final_df.columns:
+            #     final_df['end_date'] = final_df['end_date'].apply(
+            #         lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else ''
+            #     )
             
             # Display the dataframe with HTML rendering enabled
             st.write(final_df.to_html(escape=False, index=False), unsafe_allow_html=True)
