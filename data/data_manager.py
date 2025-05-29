@@ -146,12 +146,19 @@ class DataManager:
                 # Concatenate with new data
                 df = pd.concat([existing_df, df], ignore_index=True)
             
-            # Define cutoff date for 7 days ago
-            cutoff_date = pd.Timestamp(datetime.now() - pd.Timedelta(days=7), tz='US/Eastern')
+            # Define cutoff date for 7 days ago - use UTC for consistent comparison
+            cutoff_date = pd.Timestamp(datetime.now() - pd.Timedelta(days=7), tz='UTC')
 
             # Convert end_date to datetime if it's not already
             if not pd.api.types.is_datetime64_any_dtype(df['end_date']):
-                df['end_date'] = pd.to_datetime(df['end_date'])
+                df['end_date'] = pd.to_datetime(df['end_date'], utc=True)
+            else:
+                # If already datetime but has timezone info, convert to UTC
+                if df['end_date'].dt.tz is not None:
+                    df['end_date'] = df['end_date'].dt.tz_convert('UTC')
+                else:
+                    # If timezone-naive, assume UTC
+                    df['end_date'] = df['end_date'].dt.tz_localize('UTC')
 
             # Filter out tournaments that ended more than 7 days ago
             # Keep tournaments that haven't ended yet or ended within the past 7 days
