@@ -284,12 +284,20 @@ class TournamentApp:
 
                     # Check registration status
                     is_closed = self._is_registration_closed(
-                        row.get('entries_close_datetime'), 
+                        row.get('entries_close_datetime'),
                         row.get('registration_timezone')
                     )
 
-                    # Set marker color based on registration status
-                    marker_color = 'orange' if is_closed else 'green'
+                    # Parse the tournament start date
+                    start_date_obj = pd.to_datetime(row['start_date']) if pd.notna(row['start_date']) else None
+                    now = datetime.now(start_date_obj.tzinfo) if start_date_obj is not None and start_date_obj.tzinfo else datetime.now()
+
+                    if start_date_obj is not None and start_date_obj <= now:
+                        marker_color = 'red'
+                    elif is_closed:
+                        marker_color = 'orange'
+                    else:
+                        marker_color = 'green'
 
                     # Add registration status to popup
                     registration_status = "Registration Closed" if is_closed else "Registration Open"
