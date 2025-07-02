@@ -14,7 +14,7 @@ from datetime import datetime
 
 import requests
 
-from config import API_ENDPOINT, DEFAULT_HEADERS, DEFAULT_SEARCH_PARAMS, RAW_DIR
+from config import API_ENDPOINT, DEFAULT_HEADERS, DEFAULT_SEARCH_PARAMS
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -65,11 +65,6 @@ class TournamentScraper:
                     json=params,
                     headers=self.headers
                 )
-                
-                # Save raw response to file for debugging/archiving
-                raw_file = os.path.join(RAW_DIR, f"tournaments_raw_{timestamp}_page{page+1}.json")
-                with open(raw_file, 'w') as f:
-                    f.write(response.text)
                 
                 # Check if we got a valid response
                 if response.status_code == 200:

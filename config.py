@@ -6,13 +6,7 @@ load_dotenv()
 
 # Data storage configuration
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-RAW_DIR = os.path.join(DATA_DIR, "raw")
-PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
 TOURNAMENTS_FILE = os.path.join(DATA_DIR, "tournaments.parquet")
-
-# Create directories if they don't exist
-os.makedirs(RAW_DIR, exist_ok=True)
-os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 # API configuration
 API_ENDPOINT = "https://prd-usta-kube.clubspark.pro/unified-search-api/api/Search/tournaments/Query?indexSchema=tournament"

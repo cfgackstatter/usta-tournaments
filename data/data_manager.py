@@ -8,16 +8,12 @@ import json
 import logging
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
-import time
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytz
 
-from config import TOURNAMENTS_FILE, PROCESSED_DIR, RAW_DIR
-
-from config import TOURNAMENTS_FILE, PROCESSED_DIR, RAW_DIR
+from config import TOURNAMENTS_FILE
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -175,13 +171,6 @@ class DataManager:
             slim_file = self.tournaments_file.replace('.parquet', '_slim.parquet')
             slim_df.to_parquet(slim_file, engine='pyarrow', index=False)
             
-            # Also save timestamped versions for history
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            history_file = os.path.join(PROCESSED_DIR, f"tournaments_{timestamp}.parquet")
-            history_slim_file = os.path.join(PROCESSED_DIR, f"tournaments_slim_{timestamp}.parquet")
-            df.to_parquet(history_file, engine='pyarrow', index=False)
-            slim_df.to_parquet(history_slim_file, engine='pyarrow', index=False)
-            
             # Log file sizes for comparison
             if os.path.exists(self.tournaments_file) and os.path.exists(slim_file):
                 file_size_original = os.path.getsize(self.tournaments_file) / (1024 * 1024)  # MB
@@ -307,76 +296,3 @@ class DataManager:
             mask = df['event_tuples'].apply(lambda tuples: any(t[1] == event_type for t in tuples))
             
         return df[mask]
-
-    def cleanup_data(self) -> None:
-        """
-        Clean up data folders by removing files older than 7 days,
-        but always keeping the most recent file in each folder.
-        
-        Returns:
-            None
-        """
-        logger.info(f"Starting data cleanup at {datetime.now()}")
-        
-        # Clean up raw folder
-        logger.info(f"Cleaning up raw folder: {RAW_DIR}")
-        self._cleanup_folder(RAW_DIR)
-        
-        # Clean up processed folder
-        logger.info(f"Cleaning up processed folder: {PROCESSED_DIR}")
-        self._cleanup_folder(PROCESSED_DIR)
-        
-        logger.info(f"Data cleanup completed at {datetime.now()}")
-
-    def _cleanup_folder(self, folder_path: str) -> None:
-        """
-        Delete files older than 7 days in the specified folder,
-        but always keep the most recent file even if older than 7 days.
-        
-        Args:
-            folder_path: Path to the folder to clean up
-            
-        Returns:
-            None
-        """
-        # Check if folder exists
-        if not os.path.exists(folder_path):
-            logger.warning(f"Folder does not exist: {folder_path}")
-            return
-            
-        # List all files with full path
-        files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) 
-                if os.path.isfile(os.path.join(folder_path, f))]
-        
-        if not files:
-            logger.info(f"No files found in {folder_path}")
-            return
-        
-        # Sort files by modification time descending (newest first)
-        files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-        
-        # Keep the most recent file
-        most_recent_file = files[0]
-        logger.info(f"Keeping most recent file: {os.path.basename(most_recent_file)}")
-        
-        # Current time
-        now = time.time()
-        
-        # Define cutoff time for 7 days ago
-        cutoff = now - 7 * 86400
-        
-        # Iterate over files except the most recent
-        deleted_count = 0
-        for file_path in files[1:]:
-            file_mtime = os.path.getmtime(file_path)
-            if file_mtime < cutoff:
-                try:
-                    os.remove(file_path)
-                    deleted_count += 1
-                    logger.debug(f"Deleted old file: {os.path.basename(file_path)}")
-                except Exception as e:
-                    logger.error(f"Error deleting {os.path.basename(file_path)}: {e}")
-            else:
-                logger.debug(f"Keeping file (not old enough): {os.path.basename(file_path)}")
-        
-        logger.info(f"Deleted {deleted_count} old files from {folder_path}")

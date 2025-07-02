@@ -81,10 +81,6 @@ streamlit run main.py -- --webapp
 
 - `data/`: Directory for storing tournament data
 
-  - `raw/`: Raw JSON responses from the API
-
-  - `processed/`: Processed Parquet files with timestamps
-
   - `tournaments.parquet`: Main tournament data file
 
   - `tournaments_slim.parquet`: Optimized version without the bulky data column
