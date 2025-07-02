@@ -26,7 +26,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-def update_tournaments(max_pages: int = 5, sleep_min: float = 2, sleep_max: float = 5) -> None:
+def update_tournaments(max_pages: int = 10, sleep_min: float = 2, sleep_max: float = 5) -> None:
     """
     Update tournament data from the USTA API.
     
