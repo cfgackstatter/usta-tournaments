@@ -43,3 +43,8 @@ Test.ipynb
 
 # Elastic Beanstalk .zip
 *.zip
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

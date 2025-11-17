@@ -1,0 +1,21 @@
+# .ebignore - Files to exclude from EB deployment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.elasticbeanstalk/
+Test.ipynb
+*.log
+usta_tournaments.log
+application.zip
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+License
+README.md
