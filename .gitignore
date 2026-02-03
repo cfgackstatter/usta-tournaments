@@ -1,50 +1,43 @@
-# Python virtual environment
-venv/
-env/
-.env/
-
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+venv/
+env/
+.env
+*.log
+
+# Backend data
+*.parquet
+*.json
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints
+Test.ipynb
+
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Streamlit
-.streamlit/
-
-# Data files (optional - you might want to include these)
-# data/raw/
-# data/processed/
-
-# Log files
-*.log
-
-# OS specific files
-.DS_Store
-Thumbs.db
-
-# IDE specific files
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Data
-*.parquet
-*.json
-
-# Test Notebook
-Test.ipynb
-
-# Elastic Beanstalk .zip
+# Deployment
 *.zip
-
-# Elastic Beanstalk Files
 .elasticbeanstalk/*
 !.elasticbeanstalk/*.cfg.yml
 !.elasticbeanstalk/*.global.yml

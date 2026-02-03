@@ -1,1 +1,1 @@
-web: streamlit run main.py --server.port $PORT --server.enableCORS False --browser.serverAddress 0.0.0.0 -- --webapp
+web: cd backend && gunicorn -k uvicorn.workers.UvicornWorker -b :8000 --workers 2 --timeout 60 server:app

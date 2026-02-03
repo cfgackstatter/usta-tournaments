@@ -1,116 +1,247 @@
 # USTA Tournament Map
 
-A web application for browsing and filtering USTA tennis tournaments on an interactive map.
+An interactive web application for discovering and filtering USTA tennis tournaments across the United States.
 
-## Overview
-
-This application fetches tournament data from the USTA API and displays it on an interactive map, allowing users to filter tournaments by date range and tournament type. The application is built with Python and Streamlit, using Folium for map visualization.
+![USTA Tournament Map](https://img.shields.io/badge/python-3.10+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)
+![React](https://img.shields.io/badge/React-18+-blue.svg)
 
 ## Features
 
-- Interactive map showing tournament locations across the US
+### Interactive Map
+- **Real-time filtering** with advanced multi-criteria search
+- **Color-coded markers** showing tournament status:
+  - 🔵 Blue: Registration open
+  - 🟠 Orange: Registration closed
+  - 🔴 Red: Tournament started
+- **Clustered markers** for better visualization of dense tournament areas
+- **Detailed popups** with tournament information and direct links
 
-- Filter tournaments by date range
+### Advanced Filtering
+Filter tournaments by:
+- **Date range**: From/To dates
+- **Category**: Adult, Junior, Wheelchair
+- **Level**: Level 1-4, Unsanctioned, etc.
+- **Surface**: Hard, Clay, Grass
+- **Court Location**: Indoor, Outdoor
+- **Gender**: Men, Women, Mixed
+- **Event Type**: Singles, Doubles
+- **Age Group**: TODS codes (10U, 12U, 14U, etc.)
 
-- Filter tournaments by tournament type (Adult, Junior, etc.)
+### Auto-Updates
+- Daily automatic data refresh at midnight (UTC)
+- Fetches all upcoming tournaments from USTA API
+- Removes tournaments older than 7 days
 
-- View detailed tournament information by clicking on map markers
+## Architecture
 
-- Responsive design that works on both desktop and mobile devices
+### Backend (FastAPI + Python)
+- **FastAPI** REST API serving tournament data
+- **Pandas + PyArrow** for efficient Parquet data storage
+- **Tournament Scraper** for USTA API integration
+- **Modular design** with separated concerns
 
-## Installation
+### Frontend (React + Leaflet)
+- **React 18** with modern hooks
+- **React Leaflet** for interactive mapping
+- **Marker clustering** for performance
+- **Responsive design** with scrollable filter panel
 
-1. Clone the repository:
+## Local Development
 
-```console
-git clone https://github.com/yourusername/usta-tournament-map.git
-cd usta-tournament-map
-```
+### Prerequisites
+- Python 3.10+
+- Node.js 18+
+- npm or yarn
 
-2. Create a virtual environment and install dependencies:
+### Backend Setup
 
-```console
+1. Create and activate virtual environment:
+```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+2. Install dependencies:
+```bash
+cd backend
 pip install -r requirements.txt
 ```
 
-3. Create necessary directories:
-
-```console
-mkdir -p data/raw data/processed static
+3. Fetch initial tournament data:
+```bash
+python -m backend.main --update --max-pages 10
 ```
 
-## Usage
-
-### Updating Tournament Data
-
-To fetch the latest tournament data from the USTA API:
-
-```console
-python main.py --update
+4. Start the API server:
+```bash
+python server.py
+# API will be available at http://localhost:8000
 ```
 
-Optional parameters:
+### Frontend Setup
 
-- `--max-pages`: Maximum number of pages to fetch (default: 5)
-
-- `--sleep-min`: Minimum sleep time between requests (default: 2 seconds)
-
-- `--sleep-max`: Maximum sleep time between requests (default: 5 seconds)
-
-### Running the Web Application
-
-To start the Streamlit web application:
-
-```console
-python main.py --webapp
+1. Install dependencies:
+```bash
+cd frontend
+npm install
 ```
 
-Or directly with Streamlit:
-
-```console
-streamlit run main.py -- --webapp
+2. Start development server:
+```bash
+npm run dev
+# Frontend will be available at http://localhost:3000
 ```
 
 ## Project Structure
 
-- `main.py`: Main entry point for the application
+```text
+usta-tournament-map/
+├── backend/
+│   ├── server.py              # FastAPI application
+│   ├── main.py                # CLI for data updates
+│   ├── data_manager.py        # Parquet data management
+│   ├── tournament_scraper.py  # USTA API scraper
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx           # Main React component
+│   │   └── App.css           # Styles
+│   ├── package.json
+│   └── vite.config.js
+├── data/
+│   └── tournaments.parquet    # Tournament data store
+├── .ebextensions/            # AWS Elastic Beanstalk config
+│   ├── 01_setup.config       # Uvicorn + ASGI setup
+│   ├── cron-jobs.config      # Daily data updates
+│   ├── cron-setup.config     # Cron daemon setup
+│   └── logrotate.config      # Log rotation
+└── Procfile                  # EB process configuration
+```
 
-- `config.py`: Configuration settings for the application
+## API Endpoints
 
-- `data/`: Directory for storing tournament data
+```GET /api/tournaments```
 
-  - `tournaments.parquet`: Main tournament data file
+Returns all active tournaments with full details including events.
 
-  - `tournaments_slim.parquet`: Optimized version without the bulky data column
+**Response:**
+```json
+[
+  {
+    "id": "...",
+    "name": "Tournament Name",
+    "latitude": 34.0522,
+    "longitude": -118.2437,
+    "startDate": "2026-02-15T00:00:00Z",
+    "endDate": "2026-02-17T00:00:00Z",
+    "entriesCloseDateTime": "2026-02-10T04:59:59Z",
+    "location": "Venue Name, City, State",
+    "categories": ["Adult"],
+    "level": "Level 3",
+    "url": "https://playtennis.usta.com/...",
+    "events": [
+      {
+        "surface": "Hard",
+        "courtLocation": "Indoor",
+        "gender": "Boys",
+        "eventType": "Singles",
+        "todsCode": "12U"
+      }
+    ]
+  }
+]
+```
 
-- `scraper/`: Code for fetching tournament data
+```GET /api/tournaments/{tournament_id}```
 
-  - `tournament_scraper.py`: Handles API requests to fetch tournament data
+Returns full raw data for a specific tournament (debug endpoint).
 
-- `webapp/`: Web application code
+```GET /api/health```
 
-  - `app.py`: Streamlit application for displaying tournaments
+Health check endpoint.
 
-- `static/`: Static assets
+## Deployment (AWS Elastic Beanstalk)
 
-  - `style.css`: CSS styles for the web application
+### Prerequisites
 
-## Technologies Used
+- AWS CLI configured
+- EB CLI installed (```pip install awsebcli```)
 
-- Python 3.10+
+### Deploy
 
-- Streamlit for web interface
+1. Initialize EB (first time only):
+```bash
+eb init
+```
 
-- Pandas for data manipulation
+2. Create environment (first time only):
+```bash
+eb create usta-tournament-map-env
+```
 
-- Folium for map visualization
+3. Deploy updates:
+```bash
+eb deploy
+```
 
-- Parquet for efficient data storage
+4. Check status:
+```bash
+eb status
+eb health
+```
 
-- Requests for API communication
+5. View logs:
+```bash
+eb logs
+```
+
+## Environment Configuration
+
+The application uses:
+- **Nginx** as reverse proxy
+- **Uvicorn** as ASGI server
+- **Gunicorn** as process manager
+- **Cron** for daily data updates at midnight
+
+## Technologies
+
+### Backend
+
+- **FastAPI** - Modern async API framework
+- **Uvicorn** - ASGI server
+- **Pandas** - Data manipulation
+- **PyArrow** - Parquet file format
+- **Requests** - HTTP client for USTA API
+
+### Frontend
+- **React 18** - UI framework
+- **Vite** - Build tool
+- **React Leaflet** - Map component
+- **Leaflet MarkerCluster** - Marker clustering
+
+## Data Management
+
+### Storage
+
+- **Format:** Parquet (efficient columnar storage)
+- **Location:** data/tournaments.parquet
+
+### Update Schedule
+
+- **Frequency:** Daily at midnight UTC
+- **Source:** USTA TournamentDesk API
+- **Pages fetched:** 100 (configurable)
 
 ## License
 
-MIT License
+MIT License - see LICENSE file for details
+
+## Contributing
+
+Contributions welcome! Please open an issue or submit a pull request.
+
+## Acknowledgments
+
+- Tournament data provided by USTA TournamentDesk
+- Map tiles by [OpenStreetMap](https://www.openstreetmap.org/)

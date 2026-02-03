@@ -1,0 +1,532 @@
+/* ===================================
+   RESET & BASE STYLES
+   =================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* ===================================
+   LAYOUT
+   =================================== */
+
+.app {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+
+.map-container {
+  width: 100%;
+  height: 100vh;
+  z-index: 1;
+}
+
+/* ===================================
+   HEADER & FILTERS
+   =================================== */
+
+.header-overlay {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(10px);
+  padding: 12px 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 380px;
+  transition: background 0.2s;
+  max-height: calc(100vh - 40px); /* viewport height minus top/bottom margins */
+  overflow-y: auto; /* scroll when content overflows */
+}
+
+.header-overlay::-webkit-scrollbar {
+  width: 8px;
+}
+
+.header-overlay::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.header-overlay::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.header-overlay::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.header-overlay:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.header-overlay h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.tournament-count {
+  font-size: 13px;
+  color: #7f8c8d;
+  background: #ecf0f1;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+/* ===================================
+   SHARED FILTER STYLES
+   =================================== */
+
+.filter-section-header,
+.type-filter-header {
+  display: flex;
+  align-items: center;
+}
+
+.type-filter-header {
+  justify-content: space-between;
+}
+
+.filter-section-header label,
+.type-filter-header label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ===================================
+   DATE FILTER
+   =================================== */
+
+.date-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.date-inputs {
+  display: flex;
+  gap: 12px;
+}
+
+.date-filter-group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.date-filter-group label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.date-filter-group input[type="date"] {
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #2c3e50;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  flex: 1;
+}
+
+.date-filter-group input[type="date"]:hover {
+  border-color: #bdc3c7;
+}
+
+.date-filter-group input[type="date"]:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+/* ===================================
+   TYPE & LEVEL FILTERS
+   =================================== */
+
+.type-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.type-filter-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.filter-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: #ecf0f1;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #2c3e50;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.filter-btn:hover {
+  background: #d5dbdb;
+}
+
+.type-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.type-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #2c3e50;
+  cursor: pointer;
+  padding: 4px 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  transition: background 0.2s;
+  user-select: none;
+}
+
+.type-checkbox:hover {
+  background: #e9ecef;
+}
+
+.type-checkbox input[type="checkbox"] {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.type-checkbox span {
+  white-space: nowrap;
+}
+
+.filter-dropdown {
+  position: relative;
+}
+
+.dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  user-select: none;
+}
+
+.dropdown-header:hover {
+  background: #e9ecef;
+}
+
+.dropdown-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dropdown-label label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.selected-count {
+  font-size: 11px;
+  color: #95a5a6;
+  font-weight: 500;
+}
+
+.dropdown-arrow {
+  font-size: 10px;
+  color: #7f8c8d;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.dropdown-content {
+  margin-top: 8px;
+  padding: 12px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dropdown-content .type-checkboxes {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  padding-right: 4px;
+}
+
+/* Scrollbar styling for dropdown */
+.dropdown-content .type-checkboxes::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dropdown-content .type-checkboxes::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.dropdown-content .type-checkboxes::-webkit-scrollbar-thumb {
+  background: #bdc3c7;
+  border-radius: 3px;
+}
+
+.dropdown-content .type-checkboxes::-webkit-scrollbar-thumb:hover {
+  background: #95a5a6;
+}
+
+.dropdown-content .type-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #e0e0e0;
+}
+
+/* ===================================
+   LOADING & ERROR STATES
+   =================================== */
+
+.loading-container,
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #f8f9fa;
+}
+
+.error-container {
+  padding: 20px;
+  text-align: center;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #e0e0e0;
+  border-top-color: #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-container p {
+  color: #7f8c8d;
+  font-size: 16px;
+}
+
+.error-container h2 {
+  color: #e74c3c;
+  margin-bottom: 12px;
+}
+
+.error-container p {
+  color: #7f8c8d;
+  margin-bottom: 20px;
+}
+
+.error-container button {
+  background: #3498db;
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.error-container button:hover {
+  background: #2980b9;
+}
+
+/* ===================================
+   MAP POPUP STYLING
+   =================================== */
+
+.popup-content {
+  padding: 8px 4px;
+  min-width: 220px;
+  max-width: 280px;
+}
+
+.popup-content h3 {
+  color: #2c3e50;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.popup-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+  line-height: 1.3;
+}
+
+.detail-row .icon {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.details-link {
+  display: inline-block;
+  color: #3498db;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+  transition: color 0.2s;
+}
+
+.details-link:hover {
+  color: #2980b9;
+  text-decoration: underline;
+}
+
+/* ===================================
+   LEAFLET CUSTOMIZATIONS
+   =================================== */
+
+/* Move zoom controls to bottom-right */
+.leaflet-top.leaflet-left {
+  top: auto !important;
+  bottom: 20px;
+  left: auto !important;
+  right: 20px;
+}
+
+/* Popup styling */
+.leaflet-popup-content-wrapper {
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 0;
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px;
+  line-height: 1.3;
+  font-size: 12px;
+}
+
+.leaflet-popup-tip {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Hide close button */
+.leaflet-popup-close-button {
+  display: none !important;
+}
+
+/* Custom marker styling */
+.custom-marker {
+  background: none;
+  border: none;
+}
+
+/* ===================================
+   MOBILE RESPONSIVENESS
+   =================================== */
+
+@media (max-width: 768px) {
+  .header-overlay {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    padding: 10px 16px;
+    max-width: none;
+  }
+
+  .header-overlay h1 {
+    font-size: 18px;
+  }
+
+  .tournament-count {
+    font-size: 12px;
+  }
+
+  .date-filters {
+    width: 100%;
+  }
+
+  .date-filter-group {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .leaflet-top.leaflet-left {
+    bottom: 10px;
+    right: 10px;
+  }
+}

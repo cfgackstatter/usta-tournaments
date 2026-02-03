@@ -9,7 +9,6 @@ __pycache__/
 .elasticbeanstalk/
 Test.ipynb
 *.log
-usta_tournaments.log
 application.zip
 .DS_Store
 *.swp
@@ -19,3 +18,10 @@ application.zip
 .idea/
 License
 README.md
+
+# Frontend source (deploy build only)
+frontend/src/
+frontend/node_modules/
+frontend/.gitignore
+frontend/package-lock.json
+frontend/vite.config.js
