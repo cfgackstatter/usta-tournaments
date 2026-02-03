@@ -21,17 +21,16 @@ An interactive web application for discovering and filtering USTA tennis tournam
 Filter tournaments by:
 - **Date range**: From/To dates
 - **Category**: Adult, Junior, Wheelchair
-- **Level**: Level 1-4, Unsanctioned, etc.
+- **Level**: Level 1-7, Unsanctioned, etc.
 - **Surface**: Hard, Clay, Grass
 - **Court Location**: Indoor, Outdoor
 - **Gender**: Men, Women, Mixed
 - **Event Type**: Singles, Doubles
-- **Age Group**: TODS codes (10U, 12U, 14U, etc.)
+- **Age Group**: 14 & Under, Over 35, Open, etc.
 
 ### Auto-Updates
 - Daily automatic data refresh at midnight (UTC)
 - Fetches all upcoming tournaments from USTA API
-- Removes tournaments older than 7 days
 
 ## Architecture
 
@@ -39,7 +38,6 @@ Filter tournaments by:
 - **FastAPI** REST API serving tournament data
 - **Pandas + PyArrow** for efficient Parquet data storage
 - **Tournament Scraper** for USTA API integration
-- **Modular design** with separated concerns
 
 ### Frontend (React + Leaflet)
 - **React 18** with modern hooks
@@ -133,20 +131,20 @@ Returns all active tournaments with full details including events.
     "name": "Tournament Name",
     "latitude": 34.0522,
     "longitude": -118.2437,
-    "startDate": "2026-02-15T00:00:00Z",
-    "endDate": "2026-02-17T00:00:00Z",
-    "entriesCloseDateTime": "2026-02-10T04:59:59Z",
+    "startDate": "2025-12-08T00:00:00+00:00",
+    "endDate": "2026-02-28T23:59:00+00:00",
+    "entriesCloseDateTime": "2025-12-08T21:59:00Z",
     "location": "Venue Name, City, State",
     "categories": ["Adult"],
-    "level": "Level 3",
     "url": "https://playtennis.usta.com/...",
+    "level": "Level 3",
     "events": [
       {
-        "surface": "Hard",
-        "courtLocation": "Indoor",
-        "gender": "Boys",
-        "eventType": "Singles",
-        "todsCode": "12U"
+        "surface": "hard",
+        "courtLocation": "indoor",
+        "gender": "boys",
+        "eventType": "singles",
+        "todsCode": "OPEN"
       }
     ]
   }
@@ -243,5 +241,5 @@ Contributions welcome! Please open an issue or submit a pull request.
 
 ## Acknowledgments
 
-- Tournament data provided by USTA TournamentDesk
+- Tournament data provided by USTA
 - Map tiles by [OpenStreetMap](https://www.openstreetmap.org/)
