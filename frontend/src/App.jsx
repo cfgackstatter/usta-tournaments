@@ -74,6 +74,35 @@ const getMarkerIcon = (status) => {
   }
 }
 
+// Helper to format tournament date range
+const formatDateRange = (startDateStr, endDateStr) => {
+  // Parse YYYY-MM-DD without timezone conversion
+  const parseDate = (dateStr) => {
+    const [year, month, day] = dateStr.split('T')[0].split('-');
+    return new Date(year, month - 1, day);
+  };
+  
+  const startDate = parseDate(startDateStr);
+  const endDate = parseDate(endDateStr);
+  
+  const startYear = startDate.getFullYear();
+  const endYear = endDate.getFullYear();
+  
+  const startFormatted = startDate.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric' 
+  });
+  
+  // Only include year on end date, unless years differ
+  const endOptions = startYear === endYear 
+    ? { month: 'short', day: 'numeric', year: 'numeric' }
+    : { month: 'short', day: 'numeric', year: 'numeric' };
+  
+  const endFormatted = endDate.toLocaleDateString('en-US', endOptions);
+  
+  return `${startFormatted} - ${endFormatted}`;
+};
+
 function App() {
   const [allTournaments, setAllTournaments] = useState([])
   const [filteredTournaments, setFilteredTournaments] = useState([])
@@ -797,16 +826,7 @@ function App() {
 
                       <div className="detail-row">
                         <span className="icon">📅</span>
-                        <span>
-                          {new Date(tournament.startDate).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric' 
-                          })} - {new Date(tournament.endDate).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </span>
+                        <span>{formatDateRange(tournament.startDate, tournament.endDate)}</span>
                       </div>
 
                       {tournament.categories && (
