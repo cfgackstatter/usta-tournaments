@@ -8,16 +8,21 @@ from datetime import datetime
 from pathlib import Path
 import pandas as pd
 
+
 DATA_DIR = Path(__file__).parent.parent / "data"
 TOURNAMENTS_FILE = DATA_DIR / "tournaments.parquet"
 
+
 logger = logging.getLogger(__name__)
+
 
 class DataManager:
     """Manages tournament data storage and retrieval using Parquet files."""
 
+
     def __init__(self):
         self.tournaments_file = Path(TOURNAMENTS_FILE)
+
 
     def save_tournaments(self, tournaments: List[Dict[str, Any]]) -> None:
         """
@@ -48,6 +53,8 @@ class DataManager:
 
         file_size_mb = self.tournaments_file.stat().st_size / (1024 * 1024)
         logger.info(f"Saved to {self.tournaments_file} ({file_size_mb:.2f} MB)")
+        logger.info(f"File last modified: {datetime.fromtimestamp(self.tournaments_file.stat().st_mtime)}")
+
 
     def get_tournaments(self) -> List[Dict[str, Any]]:
         """
@@ -60,8 +67,9 @@ class DataManager:
             logger.warning(f"Tournaments file does not exist: {self.tournaments_file}")
             return []
 
+        file_age_hours = (datetime.now().timestamp() - self.tournaments_file.stat().st_mtime) / 3600
         df = pd.read_parquet(self.tournaments_file)
         tournaments = [json.loads(row['data']) for _, row in df.iterrows()]
 
-        logger.info(f"Loaded {len(tournaments)} tournaments")
+        logger.info(f"Loaded {len(tournaments)} tournaments from file (age: {file_age_hours:.1f} hours)")
         return tournaments

@@ -3,6 +3,7 @@ Main module for USTA Tournament Map application.
 """
 import argparse
 import logging
+import sys
 from datetime import datetime
 
 from tournament_scraper import TournamentScraper
@@ -12,7 +13,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("usta_tournaments.log"),
         logging.StreamHandler()
     ]
 )
@@ -23,18 +23,30 @@ def update_tournaments(max_pages: int = 10, sleep_min: float = 2, sleep_max: flo
     """Fetch and save tournament data from USTA API."""
     logger.info(f"Starting tournament update at {datetime.now()}")
 
-    scraper = TournamentScraper()
-    data_manager = DataManager()
+    try:
+        scraper = TournamentScraper()
+        data_manager = DataManager()
 
-    tournaments = scraper.fetch_tournaments(max_pages, sleep_min, sleep_max)
+        # Log existing tournament count before update
+        existing_tournaments = data_manager.get_tournaments()
+        logger.info(f"BEFORE UPDATE: {len(existing_tournaments)} tournaments in storage")
 
-    if tournaments:
-        data_manager.save_tournaments(tournaments)
-        logger.info(f"Saved {len(tournaments)} tournaments")
-    else:
-        logger.warning("No tournaments fetched")
+        tournaments = scraper.fetch_tournaments(max_pages, sleep_min, sleep_max)
 
-    logger.info(f"Update completed at {datetime.now()}")
+        if tournaments:
+            data_manager.save_tournaments(tournaments)
+            logger.info(f"AFTER UPDATE: Saved {len(tournaments)} tournaments")
+            logger.info(f"✓ Update successful - Tournament count changed from {len(existing_tournaments)} to {len(tournaments)}")
+        else:
+            logger.error("✗ No tournaments fetched - this is a failure condition")
+            logger.error("Exiting with error code to indicate update failure")
+            sys.exit(1)
+
+        logger.info(f"Update completed at {datetime.now()}")
+        
+    except Exception as e:
+        logger.error(f"✗ Update failed with exception: {e}", exc_info=True)
+        sys.exit(1)
 
 
 def main():
