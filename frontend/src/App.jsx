@@ -109,6 +109,8 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
+
   // Date filter state - default to next month
   const today = new Date().toISOString().split('T')[0]
   const oneMonthLater = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -490,8 +492,14 @@ function App() {
         </div>
 
         <div className="date-filters">
-          <div className="filter-section-header">
+          <div className="filter-section-header" style={{ justifyContent: 'space-between' }}>
             <label>Start Date</label>
+            <button
+              onClick={() => setFiltersExpanded(prev => !prev)}
+              className="filter-btn"
+            >
+              {filtersExpanded ? '▲ Fewer filters' : '▼ More filters'}
+            </button>
           </div>
           <div className="date-inputs">
             <div className="date-filter-group">
@@ -515,270 +523,244 @@ function App() {
           </div>
         </div>
 
-        {/* Category filter */}
-        <div className="type-filter">
-          <div className="type-filter-header">
-            <label>Category</label>
-            <div className="type-filter-actions">
-              <button onClick={selectAllCategories} className="filter-btn">All</button>
-              <button onClick={clearAllCategories} className="filter-btn">None</button>
-            </div>
-          </div>
-          <div className="type-checkboxes">
-            {availableCategories.map(category => (
-              <label key={category} className="type-checkbox">
-                <input
-                  type="checkbox"
-                  checked={selectedCategories.has(category)}
-                  onChange={() => toggleCategory(category)}
-                />
-                <span>{category}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+        {filtersExpanded && <>
 
-        {/* Level filter - dropdown style */}
-        <div className="type-filter filter-dropdown">
-          <div 
-            className="dropdown-header"
-            onClick={() => setLevelDropdownOpen(!levelDropdownOpen)}
-          >
-            <div className="dropdown-label">
-              <label>Level</label>
-              <span className="selected-count">
-                ({selectedLevels.size} selected)
-              </span>
-            </div>
-            <span className={`dropdown-arrow ${levelDropdownOpen ? 'open' : ''}`}>
-              ▼
-            </span>
-          </div>
-          
-          {levelDropdownOpen && (
-            <div className="dropdown-content">
-              <div className="type-checkboxes">
-                {availableLevels.map(level => (
-                  <label key={level} className="type-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedLevels.has(level)}
-                      onChange={() => toggleLevel(level)}
-                    />
-                    <span>{level}</span>
-                  </label>
-                ))}
-              </div>
+          {/* Category filter */}
+          <div className="type-filter">
+            <div className="type-filter-header">
+              <label>Category</label>
               <div className="type-filter-actions">
-                <button onClick={selectAllLevels} className="filter-btn">All</button>
-                <button onClick={clearAllLevels} className="filter-btn">None</button>
+                <button onClick={selectAllCategories} className="filter-btn">All</button>
+                <button onClick={clearAllCategories} className="filter-btn">None</button>
               </div>
             </div>
-          )}
-        </div>
-
-        {/* Surface filter - dropdown */}
-        <div className="type-filter filter-dropdown">
-          <div 
-            className="dropdown-header"
-            onClick={() => setSurfaceDropdownOpen(!surfaceDropdownOpen)}
-          >
-            <div className="dropdown-label">
-              <label>Surface</label>
-              <span className="selected-count">
-                ({selectedSurfaces.size} selected)
-              </span>
+            <div className="type-checkboxes">
+              {availableCategories.map(category => (
+                <label key={category} className="type-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedCategories.has(category)}
+                    onChange={() => toggleCategory(category)}
+                  />
+                  <span>{category}</span>
+                </label>
+              ))}
             </div>
-            <span className={`dropdown-arrow ${surfaceDropdownOpen ? 'open' : ''}`}>
-              ▼
-            </span>
           </div>
-          
-          {surfaceDropdownOpen && (
-            <div className="dropdown-content">
-              <div className="type-checkboxes">
-                {availableSurfaces
-                  .sort((a, b) => getDisplayLabel(a, surfaceLabels).localeCompare(getDisplayLabel(b, surfaceLabels)))
-                  .map(surface => (
-                    <label key={surface} className="type-checkbox">
+
+          {/* Level filter - dropdown style */}
+          <div className="type-filter filter-dropdown">
+            <div
+              className="dropdown-header"
+              onClick={() => setLevelDropdownOpen(!levelDropdownOpen)}
+            >
+              <div className="dropdown-label">
+                <label>Level</label>
+                <span className="selected-count">({selectedLevels.size} selected)</span>
+              </div>
+              <span className={`dropdown-arrow ${levelDropdownOpen ? 'open' : ''}`}>▼</span>
+            </div>
+            {levelDropdownOpen && (
+              <div className="dropdown-content">
+                <div className="type-checkboxes">
+                  {availableLevels.map(level => (
+                    <label key={level} className="type-checkbox">
                       <input
                         type="checkbox"
-                        checked={selectedSurfaces.has(surface)}
-                        onChange={() => toggleSurface(surface)}
+                        checked={selectedLevels.has(level)}
+                        onChange={() => toggleLevel(level)}
                       />
-                      <span>{getDisplayLabel(surface, surfaceLabels)}</span>
+                      <span>{level}</span>
                     </label>
                   ))}
+                </div>
+                <div className="type-filter-actions">
+                  <button onClick={selectAllLevels} className="filter-btn">All</button>
+                  <button onClick={clearAllLevels} className="filter-btn">None</button>
+                </div>
               </div>
-              <div className="type-filter-actions">
-                <button onClick={selectAllSurfaces} className="filter-btn">All</button>
-                <button onClick={clearAllSurfaces} className="filter-btn">None</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Court Location filter - dropdown */}
-        <div className="type-filter filter-dropdown">
-          <div 
-            className="dropdown-header"
-            onClick={() => setCourtLocationDropdownOpen(!courtLocationDropdownOpen)}
-          >
-            <div className="dropdown-label">
-              <label>Court Location</label>
-              <span className="selected-count">
-                ({selectedCourtLocations.size} selected)
-              </span>
-            </div>
-            <span className={`dropdown-arrow ${courtLocationDropdownOpen ? 'open' : ''}`}>
-              ▼
-            </span>
+            )}
           </div>
-          
-          {courtLocationDropdownOpen && (
-            <div className="dropdown-content">
-              <div className="type-checkboxes">
-                {availableCourtLocations
-                  .sort((a, b) => getDisplayLabel(a, courtLocationLabels).localeCompare(getDisplayLabel(b, courtLocationLabels)))
-                  .map(location => (
-                    <label key={location} className="type-checkbox">
+
+          {/* Surface filter - dropdown */}
+          <div className="type-filter filter-dropdown">
+            <div
+              className="dropdown-header"
+              onClick={() => setSurfaceDropdownOpen(!surfaceDropdownOpen)}
+            >
+              <div className="dropdown-label">
+                <label>Surface</label>
+                <span className="selected-count">({selectedSurfaces.size} selected)</span>
+              </div>
+              <span className={`dropdown-arrow ${surfaceDropdownOpen ? 'open' : ''}`}>▼</span>
+            </div>
+            {surfaceDropdownOpen && (
+              <div className="dropdown-content">
+                <div className="type-checkboxes">
+                  {availableSurfaces
+                    .sort((a, b) => getDisplayLabel(a, surfaceLabels).localeCompare(getDisplayLabel(b, surfaceLabels)))
+                    .map(surface => (
+                      <label key={surface} className="type-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedSurfaces.has(surface)}
+                          onChange={() => toggleSurface(surface)}
+                        />
+                        <span>{getDisplayLabel(surface, surfaceLabels)}</span>
+                      </label>
+                    ))}
+                </div>
+                <div className="type-filter-actions">
+                  <button onClick={selectAllSurfaces} className="filter-btn">All</button>
+                  <button onClick={clearAllSurfaces} className="filter-btn">None</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Court Location filter - dropdown */}
+          <div className="type-filter filter-dropdown">
+            <div
+              className="dropdown-header"
+              onClick={() => setCourtLocationDropdownOpen(!courtLocationDropdownOpen)}
+            >
+              <div className="dropdown-label">
+                <label>Court Location</label>
+                <span className="selected-count">({selectedCourtLocations.size} selected)</span>
+              </div>
+              <span className={`dropdown-arrow ${courtLocationDropdownOpen ? 'open' : ''}`}>▼</span>
+            </div>
+            {courtLocationDropdownOpen && (
+              <div className="dropdown-content">
+                <div className="type-checkboxes">
+                  {availableCourtLocations
+                    .sort((a, b) => getDisplayLabel(a, courtLocationLabels).localeCompare(getDisplayLabel(b, courtLocationLabels)))
+                    .map(location => (
+                      <label key={location} className="type-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedCourtLocations.has(location)}
+                          onChange={() => toggleCourtLocation(location)}
+                        />
+                        <span>{getDisplayLabel(location, courtLocationLabels)}</span>
+                      </label>
+                    ))}
+                </div>
+                <div className="type-filter-actions">
+                  <button onClick={selectAllCourtLocations} className="filter-btn">All</button>
+                  <button onClick={clearAllCourtLocations} className="filter-btn">None</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Gender filter - dropdown */}
+          <div className="type-filter filter-dropdown">
+            <div
+              className="dropdown-header"
+              onClick={() => setGenderDropdownOpen(!genderDropdownOpen)}
+            >
+              <div className="dropdown-label">
+                <label>Gender</label>
+                <span className="selected-count">({selectedGenders.size} selected)</span>
+              </div>
+              <span className={`dropdown-arrow ${genderDropdownOpen ? 'open' : ''}`}>▼</span>
+            </div>
+            {genderDropdownOpen && (
+              <div className="dropdown-content">
+                <div className="type-checkboxes">
+                  {availableGenders
+                    .sort((a, b) => getDisplayLabel(a, genderLabels).localeCompare(getDisplayLabel(b, genderLabels)))
+                    .map(gender => (
+                      <label key={gender} className="type-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedGenders.has(gender)}
+                          onChange={() => toggleGender(gender)}
+                        />
+                        <span>{getDisplayLabel(gender, genderLabels)}</span>
+                      </label>
+                    ))}
+                </div>
+                <div className="type-filter-actions">
+                  <button onClick={selectAllGenders} className="filter-btn">All</button>
+                  <button onClick={clearAllGenders} className="filter-btn">None</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Event Type filter - dropdown */}
+          <div className="type-filter filter-dropdown">
+            <div
+              className="dropdown-header"
+              onClick={() => setEventTypeDropdownOpen(!eventTypeDropdownOpen)}
+            >
+              <div className="dropdown-label">
+                <label>Event Type</label>
+                <span className="selected-count">({selectedEventTypes.size} selected)</span>
+              </div>
+              <span className={`dropdown-arrow ${eventTypeDropdownOpen ? 'open' : ''}`}>▼</span>
+            </div>
+            {eventTypeDropdownOpen && (
+              <div className="dropdown-content">
+                <div className="type-checkboxes">
+                  {availableEventTypes
+                    .sort((a, b) => getDisplayLabel(a, eventTypeLabels).localeCompare(getDisplayLabel(b, eventTypeLabels)))
+                    .map(eventType => (
+                      <label key={eventType} className="type-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedEventTypes.has(eventType)}
+                          onChange={() => toggleEventType(eventType)}
+                        />
+                        <span>{getDisplayLabel(eventType, eventTypeLabels)}</span>
+                      </label>
+                    ))}
+                </div>
+                <div className="type-filter-actions">
+                  <button onClick={selectAllEventTypes} className="filter-btn">All</button>
+                  <button onClick={clearAllEventTypes} className="filter-btn">None</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* TODS Code filter - dropdown */}
+          <div className="type-filter filter-dropdown">
+            <div
+              className="dropdown-header"
+              onClick={() => setTodsCodeDropdownOpen(!todsCodeDropdownOpen)}
+            >
+              <div className="dropdown-label">
+                <label>Age (TODS)</label>
+                <span className="selected-count">({selectedTodsCodes.size} selected)</span>
+              </div>
+              <span className={`dropdown-arrow ${todsCodeDropdownOpen ? 'open' : ''}`}>▼</span>
+            </div>
+            {todsCodeDropdownOpen && (
+              <div className="dropdown-content">
+                <div className="type-checkboxes">
+                  {availableTodsCodes.map(code => (
+                    <label key={code} className="type-checkbox">
                       <input
                         type="checkbox"
-                        checked={selectedCourtLocations.has(location)}
-                        onChange={() => toggleCourtLocation(location)}
+                        checked={selectedTodsCodes.has(code)}
+                        onChange={() => toggleTodsCode(code)}
                       />
-                      <span>{getDisplayLabel(location, courtLocationLabels)}</span>
+                      <span>{code}</span>
                     </label>
                   ))}
+                </div>
+                <div className="type-filter-actions">
+                  <button onClick={selectAllTodsCodes} className="filter-btn">All</button>
+                  <button onClick={clearAllTodsCodes} className="filter-btn">None</button>
+                </div>
               </div>
-              <div className="type-filter-actions">
-                <button onClick={selectAllCourtLocations} className="filter-btn">All</button>
-                <button onClick={clearAllCourtLocations} className="filter-btn">None</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Gender filter - dropdown */}
-        <div className="type-filter filter-dropdown">
-          <div 
-            className="dropdown-header"
-            onClick={() => setGenderDropdownOpen(!genderDropdownOpen)}
-          >
-            <div className="dropdown-label">
-              <label>Gender</label>
-              <span className="selected-count">
-                ({selectedGenders.size} selected)
-              </span>
-            </div>
-            <span className={`dropdown-arrow ${genderDropdownOpen ? 'open' : ''}`}>
-              ▼
-            </span>
+            )}
           </div>
-          
-          {genderDropdownOpen && (
-            <div className="dropdown-content">
-              <div className="type-checkboxes">
-                {availableGenders
-                  .sort((a, b) => getDisplayLabel(a, genderLabels).localeCompare(getDisplayLabel(b, genderLabels)))
-                  .map(gender => (
-                    <label key={gender} className="type-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedGenders.has(gender)}
-                        onChange={() => toggleGender(gender)}
-                      />
-                      <span>{getDisplayLabel(gender, genderLabels)}</span>
-                    </label>
-                  ))}
-              </div>
-              <div className="type-filter-actions">
-                <button onClick={selectAllGenders} className="filter-btn">All</button>
-                <button onClick={clearAllGenders} className="filter-btn">None</button>
-              </div>
-            </div>
-          )}
-        </div>
 
-        {/* Event Type filter - dropdown */}
-        <div className="type-filter filter-dropdown">
-          <div 
-            className="dropdown-header"
-            onClick={() => setEventTypeDropdownOpen(!eventTypeDropdownOpen)}
-          >
-            <div className="dropdown-label">
-              <label>Event Type</label>
-              <span className="selected-count">
-                ({selectedEventTypes.size} selected)
-              </span>
-            </div>
-            <span className={`dropdown-arrow ${eventTypeDropdownOpen ? 'open' : ''}`}>
-              ▼
-            </span>
-          </div>
-          
-          {eventTypeDropdownOpen && (
-            <div className="dropdown-content">
-              <div className="type-checkboxes">
-                {availableEventTypes
-                .sort((a, b) => getDisplayLabel(a, eventTypeLabels).localeCompare(getDisplayLabel(b, eventTypeLabels)))
-                .map(eventType => (
-                  <label key={eventType} className="type-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedEventTypes.has(eventType)}
-                      onChange={() => toggleEventType(eventType)}
-                    />
-                    <span>{getDisplayLabel(eventType, eventTypeLabels)}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="type-filter-actions">
-                <button onClick={selectAllEventTypes} className="filter-btn">All</button>
-                <button onClick={clearAllEventTypes} className="filter-btn">None</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* TODS Code filter - dropdown */}
-        <div className="type-filter filter-dropdown">
-          <div 
-            className="dropdown-header"
-            onClick={() => setTodsCodeDropdownOpen(!todsCodeDropdownOpen)}
-          >
-            <div className="dropdown-label">
-              <label>Age (TODS)</label>
-              <span className="selected-count">
-                ({selectedTodsCodes.size} selected)
-              </span>
-            </div>
-            <span className={`dropdown-arrow ${todsCodeDropdownOpen ? 'open' : ''}`}>
-              ▼
-            </span>
-          </div>
-          
-          {todsCodeDropdownOpen && (
-            <div className="dropdown-content">
-              <div className="type-checkboxes">
-                {availableTodsCodes.map(code => (
-                  <label key={code} className="type-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedTodsCodes.has(code)}
-                      onChange={() => toggleTodsCode(code)}
-                    />
-                    <span>{code}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="type-filter-actions">
-                <button onClick={selectAllTodsCodes} className="filter-btn">All</button>
-                <button onClick={clearAllTodsCodes} className="filter-btn">None</button>
-              </div>
-            </div>
-          )}
-        </div>
+        </>}
       </div>
 
       {/* Full-screen map with clustering */}
