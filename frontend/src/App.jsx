@@ -64,13 +64,14 @@ const createColoredIcon = (color) => {
 const blueIcon = createColoredIcon('#3b82f6')    // Blue - open
 const orangeIcon = createColoredIcon('#f97316')  // Orange - entries closed
 const redIcon = createColoredIcon('#ef4444')     // Red - started
+const darkGreenIcon = createColoredIcon('#15803d')  // Dark green - ITF
 
 // Helper to get the right icon
-const getMarkerIcon = (status) => {
+const getMarkerIcon = (status, source) => {
   switch(status) {
     case 'started': return redIcon
     case 'entries-closed': return orangeIcon
-    default: return blueIcon
+    default: return source === 'ITF' ? darkGreenIcon : blueIcon
   }
 }
 
@@ -181,17 +182,25 @@ function App() {
 
   // Fetch tournaments on mount
   useEffect(() => {
-    fetch('/api/tournaments')
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch tournaments')
-        return res.json()
-      })
-      .then(data => {
-        setAllTournaments(data)
+    Promise.all([
+      fetch('/api/usta-tournaments')
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to fetch tournaments')
+          return res.json()
+        }),
+      fetch('/api/itf-tournaments')
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to fetch ITF tournaments')
+          return res.json()
+        })
+    ])
+      .then(([ustaData, itfData]) => {
+        const combined = [...ustaData, ...itfData]
+        setAllTournaments(combined)
 
         // Extract unique categories from t.categories (array)
         const categorySet = new Set()
-        data.forEach(t => {
+        combined.forEach(t => {
           (t.categories || []).forEach(c => {
             if (c) categorySet.add(c)
           })
@@ -207,7 +216,7 @@ function App() {
         setSelectedCategories(defaultCategories)
 
         // Extract unique levels
-        const levels = [...new Set(data.map(t => t.level).filter(Boolean))].sort()
+        const levels = [...new Set(combined.map(t => t.level).filter(Boolean))].sort()
         setAvailableLevels(levels)
 
         // Default to ALL levels selected
@@ -220,7 +229,7 @@ function App() {
         const eventTypeSet = new Set()
         const todsCodeSet = new Set()
 
-        data.forEach(t => {
+        combined.forEach(t => {
           (t.events || []).forEach(event => {
             if (event.surface) surfaceSet.add(event.surface)
             if (event.courtLocation) courtLocationSet.add(event.courtLocation)
@@ -485,7 +494,7 @@ function App() {
       {/* Floating header with filters */}
       <div className="header-overlay">
         <div className="header-title">
-          <h1>USTA Tournaments</h1>
+          <h1>Tennis Tournaments</h1>
           <span className="tournament-count">
             {filteredTournaments.length} of {allTournaments.length}
           </span>
@@ -787,60 +796,68 @@ function App() {
           spiderfyOnMaxZoom={true}
           zoomToBoundsOnClick={true}
         >
-          {filteredTournaments.map(tournament => {
-            const status = getTournamentStatus(tournament)
-            const icon = getMarkerIcon(status)
-            
-            return (
-              <Marker 
-                key={tournament.id}
-                position={[tournament.latitude, tournament.longitude]}
-                icon={icon}
-              >
-                <Popup maxWidth={300}>
-                  <div className="popup-content">
-                    <h3>{tournament.name}</h3>
-                    <div className="popup-details">
-                      <div className="detail-row">
-                        <span className="icon">📍</span>
-                        <span>{tournament.location}</span>
+          {filteredTournaments
+            .filter(t => 
+              t.latitude != null && 
+              t.longitude != null && 
+              !isNaN(t.latitude) && 
+              !isNaN(t.longitude)
+            )
+            .map(tournament => {
+              const status = getTournamentStatus(tournament)
+              const icon = getMarkerIcon(status, tournament.source)
+              
+              return (
+                <Marker 
+                  key={tournament.id}
+                  position={[tournament.latitude, tournament.longitude]}
+                  icon={icon}
+                >
+                  <Popup maxWidth={300}>
+                    <div className="popup-content">
+                      <h3>{tournament.name}</h3>
+                      <div className="popup-details">
+                        <div className="detail-row">
+                          <span className="icon">📍</span>
+                          <span>{tournament.location}</span>
+                        </div>
+
+                        <div className="detail-row">
+                          <span className="icon">📅</span>
+                          <span>{formatDateRange(tournament.startDate, tournament.endDate)}</span>
+                        </div>
+
+                        {tournament.categories && (
+                          <div className="detail-row">
+                            <span className="icon">👥</span>
+                            <span>{(tournament.categories || []).join(', ')}</span>
+                          </div>
+                        )}
+
+                        {tournament.level && (
+                          <div className="detail-row">
+                            <span className="icon">📊</span>
+                            <span>{tournament.level}</span>
+                          </div>
+                        )}
                       </div>
 
-                      <div className="detail-row">
-                        <span className="icon">📅</span>
-                        <span>{formatDateRange(tournament.startDate, tournament.endDate)}</span>
-                      </div>
-
-                      {tournament.categories && (
-                        <div className="detail-row">
-                          <span className="icon">👥</span>
-                          <span>{(tournament.categories || []).join(', ')}</span>
-                        </div>
-                      )}
-
-                      {tournament.level && (
-                        <div className="detail-row">
-                          <span className="icon">📊</span>
-                          <span>{tournament.level}</span>
-                        </div>
+                      {tournament.url && (
+                        <a 
+                          href={tournament.url}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="details-link"
+                        >
+                          View Details →
+                        </a>
                       )}
                     </div>
-
-                    {tournament.url && (
-                      <a 
-                        href={tournament.url}
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="details-link"
-                      >
-                        View Details →
-                      </a>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
-            )
-          })}
+                  </Popup>
+                </Marker>
+              )
+            })
+          }
         </MarkerClusterGroup>
       </MapContainer>
     </div>

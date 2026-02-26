@@ -1,20 +1,22 @@
 """
 FastAPI server for tournament data.
 """
-
 import logging
+import os
 from typing import List, Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-from data_manager import DataManager
+from backend.usta_data_manager import USTADataManager
+from backend.itf_data_manager import ITFDataManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Tournament API")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
@@ -23,10 +25,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-data_manager = DataManager()
+usta_data_manager = USTADataManager()
+itf_data_manager = ITFDataManager()
 
 
-# ---------- Helpers ----------
+# ---------- USTA Helpers ----------
 
 def get_tournament_categories(tournament: Dict[str, Any]) -> List[str]:
     """
@@ -114,7 +117,7 @@ def get_location_details(tournament: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def build_tournament_url(tournament: Dict[str, Any]) -> str | None:
+def build_usta_url(tournament: Dict[str, Any]) -> str | None:
     """Construct full USTA competition URL from org slug + path."""
     url_path = (tournament.get("url") or "").strip()
     org = tournament.get("organization", {}) or {}
@@ -126,117 +129,179 @@ def build_tournament_url(tournament: Dict[str, Any]) -> str | None:
     return f"https://playtennis.usta.com/Competitions/{org_slug}{url_path}"
 
 
-def serialize_tournament_for_map(t: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert a raw tournament dict into the minimal map payload."""
+def serialize_usta_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a raw USTA tournament dict into the map payload."""
     geo = (t.get("location") or {}).get("geo", {}) or {}
     lat = geo.get("latitude")
     lng = geo.get("longitude")
-
     if lat is None or lng is None:
-        # Caller should skip tournaments with missing geo
         return {}
 
     location_info = get_location_details(t)
-    categories = get_tournament_categories(t)
-    events = extract_event_details(t)
-    registration = t.get("registrationRestrictions", {}) or {}
+    registration  = t.get("registrationRestrictions", {}) or {}
 
     return {
-        "id": t.get("id"),
-        "name": t.get("name"),
-        "latitude": lat,
-        "longitude": lng,
-        "startDate": t.get("timeZoneStartDateTime"),
-        "endDate": t.get("timeZoneEndDateTime"),
-        "entriesCloseDateTime": registration.get("entriesCloseDateTime"),
-        "location": location_info["full"],
-        "categories": categories,
-        "url": build_tournament_url(t),
-        "level": (t.get("level") or {}).get("name", ""),
-        "events": events,  # New: list of event details
+        "id":                    t.get("id"),
+        "name":                  t.get("name"),
+        "latitude":              lat,
+        "longitude":             lng,
+        "startDate":             t.get("timeZoneStartDateTime"),
+        "endDate":               t.get("timeZoneEndDateTime"),
+        "entriesCloseDateTime":  registration.get("entriesCloseDateTime"),
+        "location":              location_info["full"],
+        "city":                  location_info["city"],
+        "state":                 location_info["state"],
+        "venueName":             location_info["name"],
+        "categories":            get_tournament_categories(t),
+        "url":                   build_usta_url(t),
+        "level":                 (t.get("level") or {}).get("name", ""),
+        "events":                extract_event_details(t),
+        "source":                "USTA",
     }
 
 
-# ---------- Routes ----------
+# ---------- ITF Helpers ----------
 
-@app.get("/api/tournaments")
-async def get_tournaments() -> List[Dict[str, Any]]:
-    """Get all tournaments with location data for map display."""
+def serialize_itf_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a raw ITF tournament dict into the map payload."""
+    lat = t.get("lat")
+    lng = t.get("lng")
+    if lat is None or lng is None:
+        return {}
+    
+    def _val(v, default="Unknown"):
+        """Return default if value is None or a NaN float."""
+        return default if (v is None or isinstance(v, float)) else v
+
+    start_date = t.get("startDate", "")
+    entries_close = f"{start_date}T00:00:00Z" if start_date else None
+
+    promotional = t.get("promotionalName", "")
+    regular = t.get("tournamentName", "")
+    if isinstance(promotional, float): promotional = None
+    if isinstance(regular, float): regular = ""
+    name = f"{promotional} ({regular})" if promotional else regular
+
+    location_parts = [
+        str(p) for p in [t.get("venueName"), t.get("location"), t.get("hostNation")]
+        if p is not None and not isinstance(p, float)
+    ]
+
+    tournament_link = t.get("tournamentLink", "")
+    url = f"https://www.itftennis.com{tournament_link}" if tournament_link else None
+
+    return {
+        "id":                    t.get("tournamentKey"),
+        "name":                  name,
+        "latitude":              lat,
+        "longitude":             lng,
+        "startDate":             t.get("startDate"),
+        "endDate":               t.get("endDate"),
+        "entriesCloseDateTime":  entries_close,
+        "location":              ", ".join(location_parts),
+        "hostNation":            t.get("hostNation"),
+        "countryCode":           t.get("hostNationCode"),
+        "category":              t.get("category"),
+        "surfaceDesc":           t.get("surfaceDesc"),
+        "indoorOrOutdoor":       t.get("indoorOrOutDoor"),
+        "promotionalName":       t.get("promotionalName"),
+        "venueName":             t.get("venueName"),
+        "venueAddress":          t.get("venueAddress"),
+        "url":                   url,
+        "source":                "ITF",
+        "categories":            ["Adult"],
+        "level":                 f"ITF {t.get('category', '')}".strip(),
+        "events":                [{
+            "surface":       _val(t.get("surfaceDesc")),
+            "courtLocation": _val(t.get("indoorOrOutDoor")),
+            "gender":        "coed",
+            "eventType":     "singles",
+            "todsCode":      "30O",
+        }],
+    }
+
+
+# ---------- USTA Routes ----------
+
+@app.get("/api/usta-tournaments")
+async def get_usta_tournaments() -> List[Dict[str, Any]]:
     try:
-        tournaments = data_manager.get_tournaments()
-        map_data: List[Dict[str, Any]] = []
-
-        for t in tournaments:
-            serialized = serialize_tournament_for_map(t)
-            # Skip tournaments with missing geo
-            if serialized:
-                map_data.append(serialized)
-
-        logger.info("Returning %d tournaments", len(map_data))
+        tournaments = usta_data_manager.get_tournaments()
+        map_data = [s for t in tournaments if (s := serialize_usta_tournament(t))]
+        logger.info("Returning %d USTA tournaments", len(map_data))
         return map_data
-
     except Exception as exc:
-        logger.error("Error fetching tournaments: %s", exc, exc_info=True)
+        logger.error("Error fetching USTA tournaments: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@app.get("/api/tournaments/{tournament_id}")
-async def get_tournament_detail(tournament_id: str) -> Dict[str, Any]:
-    """
-    Get full tournament data for a specific tournament ID (debug/testing).
-    Returns the complete unprocessed tournament dict.
-    """
+@app.get("/api/usta-tournaments/{tournament_id}")
+async def get_usta_tournament_detail(tournament_id: str) -> Dict[str, Any]:
     try:
-        tournaments = data_manager.get_tournaments()
-        tournament = next((t for t in tournaments if t.get("id") == tournament_id), None)
-
+        tournaments = usta_data_manager.get_tournaments()
+        tournament = next((t for t in tournaments if str(t.get("id")) == tournament_id), None)
         if not tournament:
             raise HTTPException(status_code=404, detail=f"Tournament {tournament_id} not found")
-
-        logger.info("Returning full data for tournament: %s", tournament.get("name"))
         return tournament
-
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Error fetching tournament detail: %s", exc, exc_info=True)
+        logger.error("Error fetching USTA tournament detail: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    
+
+# ---------- ITF Routes ----------
+
+@app.get("/api/itf-tournaments")
+async def get_itf_tournaments() -> List[Dict[str, Any]]:
+    try:
+        tournaments = itf_data_manager.get_tournaments()
+        map_data = [s for t in tournaments if (s := serialize_itf_tournament(t))]
+        logger.info("Returning %d ITF tournaments", len(map_data))
+        return map_data
+    except Exception as exc:
+        logger.error("Error fetching ITF tournaments: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/itf-tournaments/{itf_id}")
+async def get_itf_tournament_detail(itf_id: str) -> Dict[str, Any]:
+    try:
+        tournaments = itf_data_manager.get_tournaments()
+        tournament = next((t for t in tournaments if t.get("tournamentKey") == itf_id), None)
+        if not tournament:
+            raise HTTPException(status_code=404, detail=f"ITF Tournament {itf_id} not found")
+        return tournament
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error fetching ITF tournament detail: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    
+
+# ---------- Health ----------
+
 @app.get("/api/health")
 async def health_check() -> Dict[str, str]:
-    """Health check endpoint."""
     return {"status": "ok"}
 
 
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import os
+# ---------- Static / React ----------
 
-# Serve React static files
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-
 if os.path.exists(frontend_dist):
-    # Mount static assets
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
-    
-    # Serve index.html for all other routes (React Router)
+
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
-        # If it's an API route, let FastAPI handle it (already handled above)
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404)
-        
-        # Check if file exists in dist
         file_path = os.path.join(frontend_dist, full_path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return FileResponse(file_path)
-        
-        # Otherwise serve index.html (for React Router)
         return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)

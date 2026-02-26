@@ -1,11 +1,12 @@
 """
-Tournament scraper for fetching USTA tournament data.
+Scraper for USTA tournament data.
 """
 from datetime import datetime, timedelta
 import logging
 import time
 import random
 from typing import List, Dict, Any
+from fastapi import params
 import requests
 
 API_ENDPOINT = "https://prd-usta-kube.clubspark.pro/unified-search-api/api/Search/tournaments/Query?indexSchema=tournament"
@@ -39,7 +40,7 @@ DEFAULT_SEARCH_PARAMS = {
 
 logger = logging.getLogger(__name__)
 
-class TournamentScraper:
+class USTAScraper:
     """Fetches tournament data from the USTA API with pagination and rate limiting."""
 
     def __init__(self):
@@ -62,11 +63,11 @@ class TournamentScraper:
         all_tournaments = []
         page_size = self.default_params['options']['size']
 
-        logger.info(f"Starting tournament fetch with max_pages={max_pages}")
+        logger.info(f"Starting USTA tournament fetch with max_pages={max_pages}")
 
         for page in range(max_pages):
-            params = self.default_params.copy()
-            params['options']['from'] = page * page_size
+            params = {**self.default_params}
+            params["options"] = {**params["options"], "from": page * page_size}
 
             try:
                 response = requests.post(self.endpoint, json=params, headers=self.headers, timeout=30)
@@ -97,5 +98,5 @@ class TournamentScraper:
                 logger.error(f"Request error on page {page + 1}: {e}")
                 break
 
-        logger.info(f"Fetched {len(all_tournaments)} total tournaments")
+        logger.info(f"Fetched {len(all_tournaments)} total USTA tournaments")
         return all_tournaments

@@ -1,245 +1,154 @@
-# USTA Tournament Map
+# Tennis Tournament Map
 
-An interactive web application for discovering and filtering USTA tennis tournaments across the United States.
+An interactive map for discovering USTA and ITF Masters Tour tennis tournaments.
 
-![USTA Tournament Map](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)
 ![React](https://img.shields.io/badge/React-18+-blue.svg)
 
 ## Features
 
 ### Interactive Map
-- **Real-time filtering** with advanced multi-criteria search
 - **Color-coded markers** showing tournament status:
-  - 🔵 Blue: Registration open
+  - 🔵 Blue: USTA — registration open
+  - 🟢 Dark green: ITF Masters Tour - registration open
   - 🟠 Orange: Registration closed
   - 🔴 Red: Tournament started
-- **Clustered markers** for better visualization of dense tournament areas
-- **Detailed popups** with tournament information and direct links
+- **Clustered markers** for dense areas
+- **Detailed popups** with direct links to tournament pages
 
-### Advanced Filtering
-Filter tournaments by:
-- **Date range**: From/To dates
+### Filtering
+- **Date range**
 - **Category**: Adult, Junior, Wheelchair
-- **Level**: Level 1-7, Unsanctioned, etc.
+- **Level**: USTA Level 1–7, ITF MT100–MT1000
 - **Surface**: Hard, Clay, Grass
-- **Court Location**: Indoor, Outdoor
-- **Gender**: Men, Women, Mixed
-- **Event Type**: Singles, Doubles
-- **Age Group**: 14 & Under, Over 35, Open, etc.
+- **Court location**: Indoor / Outdoor
+- **Gender**, **Event type**, **Age group**
 
-### Auto-Updates
-- Daily automatic data refresh at midnight (UTC)
-- Fetches all upcoming tournaments from USTA API
+### Data Sources
+- **USTA**: scraped daily from the USTA TournamentDesk API
+- **ITF Masters Tour**: scraped weekly from the ITF calendar API + detail pages
 
-## Architecture
+## Quick Start
 
-### Backend (FastAPI + Python)
-- **FastAPI** REST API serving tournament data
-- **Pandas + PyArrow** for efficient Parquet data storage
-- **Tournament Scraper** for USTA API integration
-
-### Frontend (React + Leaflet)
-- **React 18** with modern hooks
-- **React Leaflet** for interactive mapping
-- **Marker clustering** for performance
-- **Responsive design** with scrollable filter panel
-
-## Local Development
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- npm or yarn
-
-### Backend Setup
-
-1. Create and activate virtual environment:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Install all dependencies
+make install
+
+# Fetch initial data
+make data
+
+# Run both servers (backend :8000, frontend :5173)
+make dev
 ```
 
-2. Install dependencies:
+## All Commands
+
 ```bash
-cd backend
-pip install -r requirements.txt
+make help
 ```
 
-3. Fetch initial tournament data:
-```bash
-python -m backend.main --update --max-pages 10
-```
-
-4. Start the API server:
-```bash
-python server.py
-# API will be available at http://localhost:8000
-```
-
-### Frontend Setup
-
-1. Install dependencies:
-```bash
-cd frontend
-npm install
-```
-
-2. Start development server:
-```bash
-npm run dev
-# Frontend will be available at http://localhost:3000
-```
+| Command           | Description                             |
+| ----------------- | --------------------------------------- |
+| make install      | Install backend + frontend dependencies |
+| make dev          | Run both dev servers concurrently       |
+| make dev-backend  | FastAPI on port 8000 only               |
+| make dev-frontend | Vite on port 5173 only                  |
+| make data         | Fetch USTA (10 pages) + ITF (2 months)  |
+| make data-usta    | Fetch USTA only                         |
+| make data-itf     | Fetch ITF only                          |
+| make build        | Build frontend dist                     |
+| make deploy       | Build frontend + eb deploy              |
+| make status       | eb status                               |
+| make health       | eb health                               |
+| make logs         | eb logs                                 |
+| make ssh          | eb ssh                                  |
+| make update       | Run both update scripts on server       |
+| make clean        | Remove build artifacts + __pycache__    |
 
 ## Project Structure
 
 ```text
-usta-tournament-map/
+tennis-tournament-map/
 ├── backend/
-│   ├── server.py              # FastAPI application
-│   ├── main.py                # CLI for data updates
-│   ├── data_manager.py        # Parquet data management
-│   ├── tournament_scraper.py  # USTA API scraper
+│   ├── __init__.py
+│   ├── server.py               # FastAPI app + serializers
+│   ├── main.py                 # CLI data updater
+│   ├── usta_scraper.py         # USTA API scraper
+│   ├── usta_data_manager.py    # USTA Parquet storage
+│   ├── itf_scraper.py          # ITF calendar + detail scraper
+│   ├── itf_data_manager.py     # ITF Parquet storage
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx           # Main React component
-│   │   └── App.css           # Styles
+│   │   ├── App.jsx
+│   │   └── App.css
 │   ├── package.json
 │   └── vite.config.js
 ├── data/
-│   └── tournaments.parquet    # Tournament data store
-├── .ebextensions/            # AWS Elastic Beanstalk config
-│   ├── 01_setup.config       # Uvicorn + ASGI setup
-│   ├── cron-jobs.config      # Daily data updates
-│   ├── cron-setup.config     # Cron daemon setup
-│   └── logrotate.config      # Log rotation
-└── Procfile                  # EB process configuration
+│   ├── usta_tournaments.parquet
+│   └── itf_tournaments.parquet
+├── .ebextensions/
+│   ├── 01_setup.config         # Uvicorn + ASGI
+│   ├── 02_cron.config          # Cron daemon + update scripts
+│   ├── 03_post_deploy.config   # Post-deploy data fetch
+│   └── 04_logrotate.config     # Log rotation
+├── Makefile
+├── Procfile
+└── README.md
 ```
 
 ## API Endpoints
 
-```GET /api/tournaments```
-
-Returns all active tournaments with full details including events.
-
-**Response:**
-```json
-[
-  {
-    "id": "...",
-    "name": "Tournament Name",
-    "latitude": 34.0522,
-    "longitude": -118.2437,
-    "startDate": "2025-12-08T00:00:00+00:00",
-    "endDate": "2026-02-28T23:59:00+00:00",
-    "entriesCloseDateTime": "2025-12-08T21:59:00Z",
-    "location": "Venue Name, City, State",
-    "categories": ["Adult"],
-    "url": "https://playtennis.usta.com/...",
-    "level": "Level 3",
-    "events": [
-      {
-        "surface": "hard",
-        "courtLocation": "indoor",
-        "gender": "boys",
-        "eventType": "singles",
-        "todsCode": "OPEN"
-      }
-    ]
-  }
-]
-```
-
-```GET /api/tournaments/{tournament_id}```
-
-Returns full raw data for a specific tournament (debug endpoint).
-
-```GET /api/health```
-
-Health check endpoint.
+| Endpoint                       | Description                 |
+| ------------------------------ | --------------------------- |
+| GET /api/usta-tournaments      | All active USTA tournaments |
+| GET /api/usta-tournaments/{id} | Raw USTA tournament detail  |
+| GET /api/itf-tournaments       | All active ITF tournaments  |
+| GET /api/itf-tournaments/{id}  | Raw ITF tournament detail   |
+| GET /api/health                | Health check                |
 
 ## Deployment (AWS Elastic Beanstalk)
 
-### Prerequisites
+### First time setup
 
-- AWS CLI configured
-- EB CLI installed (```pip install awsebcli```)
-
-### Deploy
-
-1. Initialize EB (first time only):
 ```bash
 eb init
+eb create tennis-tournament-map-env
+make deploy
 ```
 
-2. Create environment (first time only):
+### Deploy updates
+
 ```bash
-eb create usta-tournament-map-env
+make deploy
 ```
 
-3. Deploy updates:
+### Check status
+
 ```bash
-eb deploy
+make status
+make health
+make logs
 ```
 
-4. Check status:
-```bash
-eb status
-eb health
-```
+### Data update schedule (on server)
 
-5. View logs:
-```bash
-eb logs
-```
+- **USTA**: daily at midnight UTC (`make update-usta` to run manually)
+- **ITF**: weekly on Mondays at 1am UTC (`make update-itf` to run manually)
+- **Post-deploy**: both run automatically after each deployment
 
-## Environment Configuration
+## Tech Stack
 
-The application uses:
-- **Nginx** as reverse proxy
-- **Uvicorn** as ASGI server
-- **Gunicorn** as process manager
-- **Cron** for daily data updates at midnight
-
-## Technologies
-
-### Backend
-
-- **FastAPI** - Modern async API framework
-- **Uvicorn** - ASGI server
-- **Pandas** - Data manipulation
-- **PyArrow** - Parquet file format
-- **Requests** - HTTP client for USTA API
-
-### Frontend
-- **React 18** - UI framework
-- **Vite** - Build tool
-- **React Leaflet** - Map component
-- **Leaflet MarkerCluster** - Marker clustering
-
-## Data Management
-
-### Storage
-
-- **Format:** Parquet (efficient columnar storage)
-- **Location:** data/tournaments.parquet
-
-### Update Schedule
-
-- **Frequency:** Daily at midnight UTC
-- **Source:** USTA TournamentDesk API
-- **Pages fetched:** 100 (configurable)
+| Layer      | Technology                            |
+| ---------- | ------------------------------------- |
+| API        | FastAPI + Uvicorn                     |
+| Data       | Pandas + PyArrow (Parquet)            |
+| Scraping   | Requests + Playwright + BeautifulSoup |
+| Frontend   | React 18 + Vite                       |
+| Map        | React Leaflet + MarkerCluster         |
+| Deployment | AWS Elastic Beanstalk + Nginx         |
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Contributing
-
-Contributions welcome! Please open an issue or submit a pull request.
-
-## Acknowledgments
-
-- Tournament data provided by USTA
-- Map tiles by [OpenStreetMap](https://www.openstreetmap.org/)
+MIT License
