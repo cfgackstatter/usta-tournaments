@@ -53,6 +53,10 @@ build:
 deploy: clean build
 	eb deploy
 
+# ─── Build, Deploy & Update ───────────────────────────────────────────────────
+
+deploy-and-update: deploy update
+
 # ─── AWS EB ───────────────────────────────────────────────────────────────────
 
 status:
@@ -109,7 +113,7 @@ help:
 	@echo "  Deploy"
 	@echo "    make build            Build frontend (npm run build)"
 	@echo "    make deploy           Build frontend + eb deploy"
-	@echo ""
+	@echo "    make deploy-and-update Build frontend + eb deploy + run update scripts on server"
 	@echo "  AWS"
 	@echo "    make status           eb status"
 	@echo "    make health           eb health"
