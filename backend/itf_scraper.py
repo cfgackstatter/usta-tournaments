@@ -341,10 +341,12 @@ def scrape_itf_months(
                 added = 0
                 for t in month_items:
                     try:
-                        start = t.get("startDate", "")[:10]
-                        if start and date.fromisoformat(start) < today:
+                        end_str = t.get("endDate", "")[:10]
+                        if end_str and date.fromisoformat(end_str) < today:
+                            # Tournament ended before today -> skip
                             continue
                     except ValueError:
+                        # If endDate is malformed, keep it rather than accidentally dropping it
                         pass
                     seen[t["tournamentKey"]] = t
                     added += 1
