@@ -4,7 +4,8 @@
         update update-usta update-itf \
         data data-usta data-itf \
         logs ssh status health \
-        clean help
+        clean clean-remote-data \
+        help
 
 PYTHON := python3
 VENV := backend/venv
@@ -83,6 +84,9 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
+clean-remote-data:
+	eb ssh --command "sudo rm -f /var/app/shared/data/itf_tournaments.parquet /var/app/shared/data/usta_tournaments.parquet && ls -l /var/app/shared/data || true"
+
 # ─── Help ─────────────────────────────────────────────────────────────────────
 
 help:
@@ -115,5 +119,7 @@ help:
 	@echo "    make update-usta      Run USTA update script on server"
 	@echo "    make update-itf       Run ITF update script on server"
 	@echo ""
-	@echo "    make clean            Remove build artifacts and __pycache__"
+	@echo "  Clean"
+	@echo "    make clean             Remove build artifacts and __pycache__"
+	@echo "    make clean-remote-data Remove Parquet data on server (/var/app/shared/data)"
 	@echo ""

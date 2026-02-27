@@ -194,12 +194,38 @@ def scrape_tournament_detail(page, tournament_link: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _split_address_components(venue_address: str, host_nation: str | None) -> list[str]:
+    """
+    Split venue address into components, trimming the trailing host nation if present.
+
+    Example:
+      address = "Calle Federico Salmon 2, Madrid, 28016, Spain"
+      host_nation = "Spain"
+      -> ["Calle Federico Salmon 2", "Madrid", "28016"]
+    """
+    addr = venue_address.strip()
+    if host_nation:
+        suffix = f", {host_nation}"
+        if addr.endswith(suffix):
+            addr = addr[: -len(suffix)]
+
+    parts = [p.strip() for p in addr.split(",") if p.strip()]
+    return parts
+
+
 def geocode_address(
     address: str,
     fallback: Optional[str] = None,
     country_code: Optional[str] = None,
+    host_nation: Optional[str] = None,
 ) -> tuple[Optional[float], Optional[float]]:
-    """Geocode via Nominatim, falling back once to a coarser location."""
+    """
+    Geocode via Nominatim.
+
+    If a full venue address is provided, try progressively shorter comma-separated
+    substrings (most specific -> least specific), all restricted to `country_code`.
+    If all fail, fall back once to `fallback` (e.g. city), also with `country_code`.
+    """
 
     def _nominatim(q: str) -> Optional[tuple[float, float]]:
         if not q:
@@ -226,14 +252,28 @@ def geocode_address(
             logger.warning("Nominatim request failed for '%s': %s", q, exc)
             return None
 
-    coords = _nominatim(address)
-    if coords is not None:
-        return coords
+    # If we have a venue address, try iterative component-based queries
+    if address:
+        components = _split_address_components(address, host_nation)
+        if components:
+            # e.g. ["Calle Federico Salmon 2", "Madrid", "28016"]
+            # Try:
+            #   "Calle Federico Salmon 2, Madrid, 28016"
+            #   "Madrid, 28016"
+            #   "28016"
+            for i in range(len(components)):
+                q = ", ".join(components[i:])
+                coords = _nominatim(q)
+                if coords is not None:
+                    logger.info("Geocoded '%s' -> %s", q, coords)
+                    return coords
 
+    # Fallback: typically the city/location, still with country_code
     if fallback:
-        logger.info("Geocode empty for '%s', trying fallback '%s'", address, fallback)
+        logger.info("Geocode fallback for '%s': '%s'", address, fallback)
         coords = _nominatim(fallback)
         if coords is not None:
+            logger.info("Geocoded fallback '%s' -> %s", fallback, coords)
             return coords
 
     return None, None
@@ -358,26 +398,24 @@ def scrape_itf_months(
 
                         detail = scrape_tournament_detail(page, t["tournamentLink"])
 
+                        host_nation = t.get("hostNation", "")
                         country_code = t.get("hostNationCode", "")
                         location = (t.get("location") or "").strip()
                         venue_address = detail.get("venueAddress", "") or ""
-
-                        host_nation = t.get("hostNation", "")
-                        suffix = f", {host_nation}" if host_nation else ""
-                        if suffix and venue_address.endswith(suffix):
-                            venue_address = venue_address[: -len(suffix)]
 
                         if venue_address:
                             lat, lng = geocode_address(
                                 venue_address,
                                 fallback=location,
                                 country_code=country_code,
+                                host_nation=host_nation,
                             )
                             detail["lat"], detail["lng"] = lat, lng
                         elif not detail.get("venueName") and location:
                             lat, lng = geocode_address(
                                 location,
                                 country_code=country_code,
+                                host_nation=host_nation,
                             )
                             detail["lat"], detail["lng"] = lat, lng
 
