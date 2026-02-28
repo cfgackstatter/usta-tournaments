@@ -9,6 +9,7 @@ import random
 import time
 from datetime import date
 from typing import Any, Callable, Optional
+import pycountry
 
 import requests
 from bs4 import BeautifulSoup
@@ -164,11 +165,15 @@ def scrape_tournament_detail(page, tournament_link: str) -> dict:
     url = BASE_URL + tournament_link
     label = f"detail {tournament_link}"
 
-    page.goto(url, wait_until="commit", timeout=60000)
     try:
-        page.wait_for_selector(".tournament-info__details-item", timeout=8000)
-    except Exception:
-        page.wait_for_timeout(3000)
+        page.goto(url, wait_until="commit", timeout=60000)
+        try:
+            page.wait_for_selector(".tournament-info__details-item", timeout=8000)
+        except Exception:
+            page.wait_for_timeout(3000)
+    except Exception as exc:
+        logger.warning("%s page load failed: %s", label, exc)
+        return {}
 
     soup = BeautifulSoup(page.content(), "html.parser")
     details: dict[str, str] = {}
@@ -194,48 +199,40 @@ def scrape_tournament_detail(page, tournament_link: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _split_address_components(venue_address: str, host_nation: str | None) -> list[str]:
-    """
-    Split venue address into components, trimming the trailing host nation if present.
+def normalize_country_code(itf_code: str) -> Optional[str]:
+    """Convert ITF alpha-3 nation code to Nominatim ISO alpha-2."""
+    if not itf_code:
+        return None
 
-    Example:
-      address = "Calle Federico Salmon 2, Madrid, 28016, Spain"
-      host_nation = "Spain"
-      -> ["Calle Federico Salmon 2", "Madrid", "28016"]
-    """
-    addr = venue_address.strip()
-    if host_nation:
-        suffix = f", {host_nation}"
-        if addr.endswith(suffix):
-            addr = addr[: -len(suffix)]
+    # ITF-specific overrides (non-ISO or politically ambiguous codes)
+    overrides = {
+        "TPE": "TWN",  # Chinese Taipei → Taiwan
+        "HKG": "CHN",  # Hong Kong → China
+    }
+    code = overrides.get(itf_code.upper(), itf_code.upper())
 
-    parts = [p.strip() for p in addr.split(",") if p.strip()]
-    return parts
+    country = pycountry.countries.get(alpha_3=code)
+    return country.alpha_2 if country else None
 
 
-def geocode_address(
-    address: str,
-    fallback: Optional[str] = None,
+def geocode_venue_recursive(
+    venue_name: str,
+    venue_address: str,
+    location: str,
+    host_nation: str,
     country_code: Optional[str] = None,
-    host_nation: Optional[str] = None,
 ) -> tuple[Optional[float], Optional[float]]:
-    """
-    Geocode via Nominatim.
-
-    If a full venue address is provided, try progressively shorter comma-separated
-    substrings (most specific -> least specific), all restricted to `country_code`.
-    If all fail, fall back once to `fallback` (e.g. city), also with `country_code`.
-    """
-
-    def _nominatim(q: str) -> Optional[tuple[float, float]]:
-        if not q:
+    """Geocode in priority: venueAddress → venueName+address (progressive) → location."""
+    
+    def try_geocode(query: str) -> Optional[tuple[float, float]]:
+        if not query.strip():
             return None
-
-        params: dict[str, Any] = {"q": q, "format": "json", "limit": 1}
+        
+        params = {"q": query, "format": "json", "limit": 1}
         if country_code:
             params["countrycodes"] = country_code
-
-        try:
+        
+        def _fetch():
             resp = requests.get(
                 "https://nominatim.openstreetmap.org/search",
                 params=params,
@@ -244,38 +241,45 @@ def geocode_address(
             )
             resp.raise_for_status()
             results = resp.json()
-            if not results:
-                logger.debug("Nominatim no results for '%s'", q)
-                return None
-            return float(results[0]["lat"]), float(results[0]["lon"])
-        except Exception as exc:
-            logger.warning("Nominatim request failed for '%s': %s", q, exc)
-            return None
+            return (float(results[0]["lat"]), float(results[0]["lon"])) if results else None
 
-    # If we have a venue address, try iterative component-based queries
-    if address:
-        components = _split_address_components(address, host_nation)
-        if components:
-            # e.g. ["Calle Federico Salmon 2", "Madrid", "28016"]
-            # Try:
-            #   "Calle Federico Salmon 2, Madrid, 28016"
-            #   "Madrid, 28016"
-            #   "28016"
-            for i in range(len(components)):
-                q = ", ".join(components[i:])
-                coords = _nominatim(q)
-                if coords is not None:
-                    logger.info("Geocoded '%s' -> %s", q, coords)
-                    return coords
+        return _retry(f"nominatim '{query[:40]}'", _fetch)
+    
+    # Clean trailing host nation from address
+    if host_nation and venue_address:
+        suffix = f", {host_nation}"
+        if venue_address.endswith(suffix):
+            venue_address = venue_address[:-len(suffix)]
 
-    # Fallback: typically the city/location, still with country_code
-    if fallback:
-        logger.info("Geocode fallback for '%s': '%s'", address, fallback)
-        coords = _nominatim(fallback)
-        if coords is not None:
-            logger.info("Geocoded fallback '%s' -> %s", fallback, coords)
+    address_parts = [p.strip() for p in venue_address.split(",") if p.strip()] if venue_address else []
+    
+    # Try each address length, always paired: with venueName first, then without
+    for drop in range(len(address_parts) + 1):
+        remaining = ", ".join(address_parts[drop:])
+
+        # With venueName
+        if venue_name and remaining:
+            coords = try_geocode(f"{venue_name}, {remaining}")
+            if coords:
+                logger.info("Geocoded [%s + addr-%d]: %s", venue_name[:25], drop, coords)
+                return coords
+
+        # Without venueName
+        if remaining:
+            coords = try_geocode(remaining)
+            if coords:
+                logger.info("Geocoded [addr-%d]: %s", drop, coords)
+                return coords
+    
+    # Final fallback: location
+    if location:
+        coords = try_geocode(location)
+        if coords:
+            logger.info("Geocoded [location '%s']: %s", location, coords)
             return coords
 
+    logger.warning("No geocoding match: venue=%s loc=%s nation=%s",
+                   venue_name[:30], location[:20], host_nation)
     return None, None
 
 
@@ -400,27 +404,21 @@ def scrape_itf_months(
 
                         detail = scrape_tournament_detail(page, t["tournamentLink"])
 
-                        host_nation = t.get("hostNation", "")
-                        country_code = t.get("hostNationCode", "")
+                        venue_name = detail.get("venueName", "")
+                        venue_address = detail.get("venueAddress", "")
                         location = (t.get("location") or "").strip()
-                        venue_address = detail.get("venueAddress", "") or ""
+                        host_nation = t.get("hostNation", "")
+                        country_code = normalize_country_code(t.get("hostNationCode", ""))
 
-                        if venue_address:
-                            lat, lng = geocode_address(
-                                venue_address,
-                                fallback=location,
-                                country_code=country_code,
-                                host_nation=host_nation,
-                            )
-                            detail["lat"], detail["lng"] = lat, lng
-                        elif not detail.get("venueName") and location:
-                            lat, lng = geocode_address(
-                                location,
-                                country_code=country_code,
-                                host_nation=host_nation,
-                            )
-                            detail["lat"], detail["lng"] = lat, lng
+                        lat, lng = geocode_venue_recursive(
+                            venue_name,
+                            venue_address,
+                            location,
+                            host_nation,
+                            country_code,
+                        )
 
+                        detail["lat"], detail["lng"] = lat, lng
                         t.update(detail)
 
                         if j < total_details:
