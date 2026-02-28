@@ -223,28 +223,37 @@ def geocode_venue_recursive(
     country_code: Optional[str] = None,
 ) -> tuple[Optional[float], Optional[float]]:
     """Geocode in priority: venueAddress → venueName+address (progressive) → location."""
-    
+
     def try_geocode(query: str) -> Optional[tuple[float, float]]:
         if not query.strip():
             return None
-        
+
         params = {"q": query, "format": "json", "limit": 1}
         if country_code:
             params["countrycodes"] = country_code
-        
-        def _fetch():
-            resp = requests.get(
-                "https://nominatim.openstreetmap.org/search",
-                params=params,
-                headers={"User-Agent": "itf-tournaments-app/1.0"},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            results = resp.json()
-            return (float(results[0]["lat"]), float(results[0]["lon"])) if results else None
 
-        return _retry(f"nominatim '{query[:40]}'", _fetch)
-    
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                time.sleep(1.0)
+                resp = requests.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params=params,
+                    headers={"User-Agent": "itf-tournaments-app/1.0"},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    results = resp.json()
+                    return (float(results[0]["lat"]), float(results[0]["lon"])) if results else None
+                logger.warning("Nominatim %d for '%s' (attempt %d)", resp.status_code, query[:40], attempt)
+            except Exception as exc:
+                logger.warning("Nominatim error for '%s' (attempt %d): %s", query[:40], attempt, exc)
+
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_BACKOFF * attempt)
+
+        logger.warning("Nominatim failed after %d attempts: '%s'", MAX_RETRIES, query[:40])
+        return None
+
     # Clean trailing host nation from address
     if host_nation and venue_address:
         suffix = f", {host_nation}"
@@ -252,25 +261,23 @@ def geocode_venue_recursive(
             venue_address = venue_address[:-len(suffix)]
 
     address_parts = [p.strip() for p in venue_address.split(",") if p.strip()] if venue_address else []
-    
-    # Try each address length, always paired: with venueName first, then without
+
+    # Try each address length, paired: with venueName first, then without
     for drop in range(len(address_parts) + 1):
         remaining = ", ".join(address_parts[drop:])
 
-        # With venueName
         if venue_name and remaining:
             coords = try_geocode(f"{venue_name}, {remaining}")
             if coords:
                 logger.info("Geocoded [%s + addr-%d]: %s", venue_name[:25], drop, coords)
                 return coords
 
-        # Without venueName
         if remaining:
             coords = try_geocode(remaining)
             if coords:
                 logger.info("Geocoded [addr-%d]: %s", drop, coords)
                 return coords
-    
+
     # Final fallback: location
     if location:
         coords = try_geocode(location)
