@@ -6,6 +6,7 @@ from __future__ import annotations
 import calendar
 import logging
 import random
+import math
 import time
 from datetime import date
 from typing import Any, Callable, Optional
@@ -28,6 +29,12 @@ MAX_RETRIES = 3
 RETRY_BACKOFF = 2.0
 
 CHANGE_FIELDS = ("tournamentName", "startDate", "endDate", "status")
+
+COUNTRY_CODE_FALLBACKS = {
+    "IE": "GB",  # Northern Ireland filed under IRL but geocodes as GBR
+    "TW": "CN",  # Chinese Taipei (TPE) fallback to China
+    "HK": "CN",  # Hong Kong fallback to China
+}
 
 
 # ---------------------------------------------------------------------------
@@ -203,15 +210,7 @@ def normalize_country_code(itf_code: str) -> Optional[str]:
     """Convert ITF alpha-3 nation code to Nominatim ISO alpha-2."""
     if not itf_code:
         return None
-
-    # ITF-specific overrides (non-ISO or politically ambiguous codes)
-    overrides = {
-        "TPE": "TWN",  # Chinese Taipei → Taiwan
-        "HKG": "CHN",  # Hong Kong → China
-    }
-    code = overrides.get(itf_code.upper(), itf_code.upper())
-
-    country = pycountry.countries.get(alpha_3=code)
+    country = pycountry.countries.get(alpha_3=itf_code.upper())
     return country.alpha_2 if country else None
 
 
@@ -278,12 +277,20 @@ def geocode_venue_recursive(
                 logger.info("Geocoded [addr-%d]: %s", drop, coords)
                 return coords
 
-    # Final fallback: location
+    # Fallback: location string
     if location:
         coords = try_geocode(location)
         if coords:
             logger.info("Geocoded [location '%s']: %s", location, coords)
             return coords
+        
+    # Country code fallback (e.g. Northern Ireland→GB, TPE→CN, HKG→CN)
+    fallback_cc = COUNTRY_CODE_FALLBACKS.get(country_code or "")
+    if fallback_cc:
+        logger.debug("Retrying with country fallback %s→%s", country_code, fallback_cc)
+        return geocode_venue_recursive(
+            venue_name, venue_address, location, host_nation, fallback_cc
+        )
 
     logger.warning("No geocoding match: venue=%s loc=%s nation=%s",
                    venue_name[:30], location[:20], host_nation)
@@ -296,9 +303,12 @@ def geocode_venue_recursive(
 
 
 def _needs_rescrape(t: dict, ex: Optional[dict]) -> bool:
+    def _valid_coord(v) -> bool:
+        return v is not None and not (isinstance(v, float) and math.isnan(v))
+
     if not ex:
         return True
-    has_coords = ex.get("lat") is not None and ex.get("lng") is not None
+    has_coords = _valid_coord(ex.get("lat")) and _valid_coord(ex.get("lng"))
     if not (ex.get("venueName") and has_coords):
         return True
     return any(str(t.get(f)) != str(ex.get(f)) for f in CHANGE_FIELDS)
