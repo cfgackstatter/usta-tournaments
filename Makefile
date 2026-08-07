@@ -51,7 +51,7 @@ build:
 	cd frontend && npm run build
 
 deploy: clean build
-	eb deploy
+	eb deploy --timeout 30
 
 # ─── Build, Deploy & Update ───────────────────────────────────────────────────
 

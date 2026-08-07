@@ -91,7 +91,7 @@ tennis-tournament-map/
 ├── .ebextensions/
 │   ├── 01_setup.config         # Uvicorn + ASGI
 │   ├── 02_cron.config          # Cron daemon + update scripts
-│   ├── 03_post_deploy.config   # Post-deploy data fetch
+│   ├── 04_post_deploy_update.config  # Chromium/Playwright install
 │   └── 04_logrotate.config     # Log rotation
 ├── Makefile
 ├── Procfile
@@ -136,7 +136,7 @@ make logs
 
 - **USTA**: daily at midnight UTC (`make update-usta` to run manually)
 - **ITF**: weekly on Mondays at 1am UTC (`make update-itf` to run manually)
-- **Post-deploy**: both run automatically after each deployment
+- **Deploy**: installs Chromium system libs only — does **not** scrape or download Playwright browsers (run `make update` after deploy; first ITF update installs browsers)
 
 ## Tech Stack
 

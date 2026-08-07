@@ -48,7 +48,14 @@ def update_usta_tournaments(max_pages: int = 10, sleep_min: float = 2, sleep_max
         return False
     
 
-def update_itf_tournaments(months_back: int = 0, months_ahead: int = 3, sleep_min: float = 2, sleep_max: float = 5) -> bool:
+def update_itf_tournaments(
+    months_back: int = 0,
+    months_ahead: int = 3,
+    sleep_min: float = 2,
+    sleep_max: float = 5,
+    max_details: int | None = None,
+    save_batch_size: int = 10,
+) -> bool:
     """Scrape and save ITF Masters Tour data. Returns True on success."""
     logger.info(f"Starting ITF tournament update at {datetime.now()}")
     try:
@@ -69,6 +76,7 @@ def update_itf_tournaments(months_back: int = 0, months_ahead: int = 3, sleep_mi
         from itertools import groupby
         all_tournaments = []
         months.sort()
+        details_remaining = max_details
         for year, year_months in groupby(months, key=lambda x: x[0]):
             month_nums = [m for _, m in year_months]
             logger.info(f"Scraping ITF calendar for {year}, months: {month_nums}")
@@ -80,8 +88,15 @@ def update_itf_tournaments(months_back: int = 0, months_ahead: int = 3, sleep_mi
                     sleep_max=sleep_max,
                     existing_df=existing_df,
                     data_manager=data_manager,
+                    save_batch_size=save_batch_size,
+                    max_details=details_remaining,
                 )
             )
+            # Refresh existing_df so the next year can reuse what we just saved
+            existing_df = data_manager.load_tournaments()
+            if details_remaining is not None:
+                # Budget is per run; year splits should not multiply the cap
+                details_remaining = 0
 
         if not all_tournaments:
             logger.error("No ITF tournaments fetched")
@@ -104,6 +119,18 @@ def main():
     parser.add_argument("--sleep-max", type=float, default=5, help="Max sleep between requests")
     parser.add_argument("--months-back", type=int, default=0, help="ITF: months back from today to scrape")
     parser.add_argument("--months-ahead", type=int, default=3, help="ITF: months ahead from today to scrape")
+    parser.add_argument(
+        "--max-details",
+        type=int,
+        default=None,
+        help="ITF: max tournaments to detail-scrape/geocode (calendar still fully fetched)",
+    )
+    parser.add_argument(
+        "--save-batch-size",
+        type=int,
+        default=10,
+        help="ITF: save to parquet after this many detail scrapes",
+    )
 
     args = parser.parse_args()
 
@@ -120,7 +147,14 @@ def main():
             success = False
 
     if args.update or args.update_itf:
-        ok = update_itf_tournaments(args.months_back, args.months_ahead, args.sleep_min, args.sleep_max)
+        ok = update_itf_tournaments(
+            args.months_back,
+            args.months_ahead,
+            args.sleep_min,
+            args.sleep_max,
+            max_details=args.max_details,
+            save_batch_size=args.save_batch_size,
+        )
         if not ok:
             logger.error("ITF update failed")
             success = False

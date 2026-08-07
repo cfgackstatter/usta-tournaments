@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import calendar
 import logging
-import random
 import math
+import random
 import time
 from datetime import date
 from typing import Any, Callable, Optional
-import pycountry
+from urllib.parse import urlencode
 
+import pycountry
 import requests
 from bs4 import BeautifulSoup
 
@@ -19,14 +20,17 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.itftennis.com"
 API_URL = f"{BASE_URL}/tennis/api/TournamentApi/GetCalendar"
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept": "application/json, text/html;q=0.9, */*;q=0.8",
 }
+NOMINATIM_HEADERS = {"User-Agent": "itf-tournaments-app/1.0"}
 
 MAX_RETRIES = 3
 RETRY_BACKOFF = 2.0
+CALENDAR_PAGE_SIZE = 100
 
 CHANGE_FIELDS = ("tournamentName", "startDate", "endDate", "status")
 
@@ -52,13 +56,7 @@ def _retry(label: str, fn: Callable[[], Any], retries: int = MAX_RETRIES) -> Any
                     logger.info("%s succeeded on attempt %d", label, attempt)
                 return result
         except Exception as exc:
-            logger.warning(
-                "%s failed (attempt %d/%d): %s",
-                label,
-                attempt,
-                retries,
-                exc,
-            )
+            logger.warning("%s failed (attempt %d/%d): %s", label, attempt, retries, exc)
 
         if attempt < retries:
             sleep_s = RETRY_BACKOFF * attempt
@@ -88,7 +86,6 @@ def _open_browser(playwright):
             "--no-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
-            "--single-process",
         ],
     )
     context = browser.new_context(
@@ -100,13 +97,13 @@ def _open_browser(playwright):
     return browser, page
 
 
-def _calendar_url(year: int, month: int) -> str:
+def _calendar_url(year: int, month: int, skip: int = 0, take: int = CALENDAR_PAGE_SIZE) -> str:
     last_day = calendar.monthrange(year, month)[1]
     params = {
         "circuitCode": "VT",
         "searchString": "",
-        "skip": "0",
-        "take": "100",
+        "skip": str(skip),
+        "take": str(take),
         "dateFrom": f"{year}-{month:02d}-01",
         "dateTo": f"{year}-{month:02d}-{last_day}",
         "isOrderAscending": "true",
@@ -117,8 +114,7 @@ def _calendar_url(year: int, month: int) -> str:
         "categories": "",
         "surfaceCodes": "",
     }
-    qs = "&".join(f"{k}={v}" for k, v in params.items())
-    return f"{API_URL}?{qs}"
+    return f"{API_URL}?{urlencode(params)}"
 
 
 # ---------------------------------------------------------------------------
@@ -126,10 +122,10 @@ def _calendar_url(year: int, month: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def scrape_calendar_month(year: int, month: int, page) -> list[dict]:
-    """Fetch one month of ITF tournaments via Playwright."""
-    label = f"calendar {year}-{month:02d}"
-    url = _calendar_url(year, month)
+def _fetch_calendar_page(year: int, month: int, page, skip: int, take: int) -> list[dict]:
+    """Fetch one calendar page. Raises if capture fails after retries."""
+    label = f"calendar {year}-{month:02d} skip={skip}"
+    url = _calendar_url(year, month, skip=skip, take=take)
 
     def _fetch():
         captured: dict[str, Any] = {}
@@ -142,9 +138,11 @@ def scrape_calendar_month(year: int, month: int, page) -> list[dict]:
                     logger.debug("%s response JSON parse failed", label)
 
         page.on("response", on_response)
-        page.goto(url, wait_until="commit", timeout=30000)
-        page.wait_for_timeout(2000)
-        page.remove_listener("response", on_response)
+        try:
+            page.goto(url, wait_until="commit", timeout=30000)
+            page.wait_for_timeout(2000)
+        finally:
+            page.remove_listener("response", on_response)
 
         data = captured.get("data")
         if data is not None:
@@ -157,9 +155,27 @@ def scrape_calendar_month(year: int, month: int, page) -> list[dict]:
         return None
 
     result = _retry(label, _fetch)
-    items: list[dict] = result if isinstance(result, list) else []
-    logger.info("%s fetched %d tournaments", label, len(items))
-    return items
+    if result is None:
+        raise RuntimeError(f"{label}: failed to fetch calendar (bot-block or empty capture)")
+    return result
+
+
+def scrape_calendar_month(year: int, month: int, page) -> list[dict]:
+    """Fetch one month of ITF tournaments via Playwright, paginating past take=100."""
+    label = f"calendar {year}-{month:02d}"
+    all_items: list[dict] = []
+    skip = 0
+
+    while True:
+        batch = _fetch_calendar_page(year, month, page, skip=skip, take=CALENDAR_PAGE_SIZE)
+        all_items.extend(batch)
+        if len(batch) < CALENDAR_PAGE_SIZE:
+            break
+        skip += CALENDAR_PAGE_SIZE
+        time.sleep(1.0)
+
+    logger.info("%s fetched %d tournaments", label, len(all_items))
+    return all_items
 
 
 # ---------------------------------------------------------------------------
@@ -214,87 +230,123 @@ def normalize_country_code(itf_code: str) -> Optional[str]:
     return country.alpha_2 if country else None
 
 
-def geocode_venue_recursive(
-    venue_name: str,
-    venue_address: str,
-    location: str,
-    host_nation: str,
-    country_code: Optional[str] = None,
-) -> tuple[Optional[float], Optional[float]]:
-    """Geocode in priority: venueAddress → venueName+address (progressive) → location."""
+class NominatimGeocoder:
+    """Nominatim client with session reuse and per-run query cache.
 
-    def try_geocode(query: str) -> Optional[tuple[float, float]]:
+    Progressive search tries distinct strings: ``venue, address`` then ``address``
+    alone at each address truncation — not the same query twice.
+    """
+
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update(NOMINATIM_HEADERS)
+        self._cache: dict[tuple[str, Optional[str]], Optional[tuple[float, float]]] = {}
+
+    def close(self) -> None:
+        self.session.close()
+
+    def _try_geocode(
+        self, query: str, country_code: Optional[str]
+    ) -> Optional[tuple[float, float]]:
         if not query.strip():
             return None
 
-        params = {"q": query, "format": "json", "limit": 1}
+        cache_key = (query, country_code)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        params: dict[str, Any] = {"q": query, "format": "json", "limit": 1}
         if country_code:
             params["countrycodes"] = country_code
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                time.sleep(1.0)
-                resp = requests.get(
-                    "https://nominatim.openstreetmap.org/search",
-                    params=params,
-                    headers={"User-Agent": "itf-tournaments-app/1.0"},
-                    timeout=10,
-                )
+                time.sleep(1.0)  # Nominatim: max 1 request/second
+                resp = self.session.get(NOMINATIM_URL, params=params, timeout=10)
                 if resp.status_code == 200:
                     results = resp.json()
-                    return (float(results[0]["lat"]), float(results[0]["lon"])) if results else None
-                logger.warning("Nominatim %d for '%s' (attempt %d)", resp.status_code, query[:40], attempt)
+                    coords = (
+                        (float(results[0]["lat"]), float(results[0]["lon"]))
+                        if results
+                        else None
+                    )
+                    self._cache[cache_key] = coords
+                    return coords  # empty result is definitive — do not retry
+                logger.warning(
+                    "Nominatim %d for '%s' (attempt %d)",
+                    resp.status_code,
+                    query[:40],
+                    attempt,
+                )
             except Exception as exc:
-                logger.warning("Nominatim error for '%s' (attempt %d): %s", query[:40], attempt, exc)
+                logger.warning(
+                    "Nominatim error for '%s' (attempt %d): %s",
+                    query[:40],
+                    attempt,
+                    exc,
+                )
 
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_BACKOFF * attempt)
 
         logger.warning("Nominatim failed after %d attempts: '%s'", MAX_RETRIES, query[:40])
+        self._cache[cache_key] = None
         return None
 
-    # Clean trailing host nation from address
-    if host_nation and venue_address:
-        suffix = f", {host_nation}"
-        if venue_address.endswith(suffix):
-            venue_address = venue_address[:-len(suffix)]
+    def geocode_venue(
+        self,
+        venue_name: str,
+        venue_address: str,
+        location: str,
+        host_nation: str,
+        country_code: Optional[str] = None,
+    ) -> tuple[Optional[float], Optional[float]]:
+        """Geocode: progressive address (with venue, then without) → location → country fallback."""
+        if host_nation and venue_address:
+            suffix = f", {host_nation}"
+            if venue_address.endswith(suffix):
+                venue_address = venue_address[: -len(suffix)]
 
-    address_parts = [p.strip() for p in venue_address.split(",") if p.strip()] if venue_address else []
-
-    # Try each address length, paired: with venueName first, then without
-    for drop in range(len(address_parts) + 1):
-        remaining = ", ".join(address_parts[drop:])
-
-        if venue_name and remaining:
-            coords = try_geocode(f"{venue_name}, {remaining}")
-            if coords:
-                logger.info("Geocoded [%s + addr-%d]: %s", venue_name[:25], drop, coords)
-                return coords
-
-        if remaining:
-            coords = try_geocode(remaining)
-            if coords:
-                logger.info("Geocoded [addr-%d]: %s", drop, coords)
-                return coords
-
-    # Fallback: location string
-    if location:
-        coords = try_geocode(location)
-        if coords:
-            logger.info("Geocoded [location '%s']: %s", location, coords)
-            return coords
-        
-    # Country code fallback (e.g. Northern Ireland→GB, TPE→CN, HKG→CN)
-    fallback_cc = COUNTRY_CODE_FALLBACKS.get(country_code or "")
-    if fallback_cc:
-        logger.debug("Retrying with country fallback %s→%s", country_code, fallback_cc)
-        return geocode_venue_recursive(
-            venue_name, venue_address, location, host_nation, fallback_cc
+        address_parts = (
+            [p.strip() for p in venue_address.split(",") if p.strip()] if venue_address else []
         )
 
-    logger.warning("No geocoding match: venue=%s loc=%s nation=%s",
-                   venue_name[:30], location[:20], host_nation)
-    return None, None
+        # Distinct queries: "Venue, addr..." then "addr..." at each truncation level
+        for drop in range(len(address_parts) + 1):
+            remaining = ", ".join(address_parts[drop:])
+
+            if venue_name and remaining:
+                coords = self._try_geocode(f"{venue_name}, {remaining}", country_code)
+                if coords:
+                    logger.info("Geocoded [%s + addr-%d]: %s", venue_name[:25], drop, coords)
+                    return coords
+
+            if remaining:
+                coords = self._try_geocode(remaining, country_code)
+                if coords:
+                    logger.info("Geocoded [addr-%d]: %s", drop, coords)
+                    return coords
+
+        if location:
+            coords = self._try_geocode(location, country_code)
+            if coords:
+                logger.info("Geocoded [location '%s']: %s", location, coords)
+                return coords
+
+        fallback_cc = COUNTRY_CODE_FALLBACKS.get(country_code or "")
+        if fallback_cc:
+            logger.debug("Retrying with country fallback %s→%s", country_code, fallback_cc)
+            return self.geocode_venue(
+                venue_name, venue_address, location, host_nation, fallback_cc
+            )
+
+        logger.warning(
+            "No geocoding match: venue=%s loc=%s nation=%s",
+            venue_name[:30],
+            location[:20],
+            host_nation,
+        )
+        return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +366,9 @@ def _needs_rescrape(t: dict, ex: Optional[dict]) -> bool:
     return any(str(t.get(f)) != str(ex.get(f)) for f in CHANGE_FIELDS)
 
 
+DETAIL_BATCH_SIZE = 10
+
+
 def scrape_itf_months(
     year: int,
     months: list[int],
@@ -322,8 +377,15 @@ def scrape_itf_months(
     fetch_details: bool = True,
     existing_df=None,
     data_manager=None,
+    save_batch_size: int = DETAIL_BATCH_SIZE,
+    max_details: Optional[int] = None,
 ) -> list[dict]:
-    """Scrape ITF calendar for the given months and return upcoming tournaments."""
+    """Scrape ITF calendar for the given months, then detail/geocode in batches.
+
+    1. Fetch all month calendars and dedupe by tournamentKey.
+    2. Reuse existing venue/coords where still valid.
+    3. Detail-scrape + geocode the rest, saving every ``save_batch_size`` tournaments.
+    """
     from playwright.sync_api import sync_playwright
 
     today = date.today()
@@ -343,81 +405,96 @@ def scrape_itf_months(
     logger.info("Loaded %d existing ITF tournaments", len(existing))
 
     seen: dict[str, dict] = {}
+    geocoder = NominatimGeocoder()
 
-    with sync_playwright() as p:
-        browser, page = _open_browser(p)
-        logger.info("Playwright browser launched")
-        try:
-            for i, month in enumerate(months):
-                label_month = f"{year}-{month:02d}"
-                logger.info("ITF month %s: fetching calendar", label_month)
+    def _persist(label: str) -> None:
+        if not data_manager or not seen:
+            return
+        data_manager.save_tournaments(list(seen.values()))
+        logger.info("%s: saved %d tournaments", label, len(seen))
 
-                month_items = scrape_calendar_month(year, month, page)
-                logger.info(
-                    "ITF month %s: %d items from calendar",
-                    label_month,
-                    len(month_items),
-                )
+    try:
+        with sync_playwright() as p:
+            browser, page = _open_browser(p)
+            logger.info("Playwright browser launched")
+            try:
+                # Phase 1: full calendar list (deduped)
+                for i, month in enumerate(months):
+                    label_month = f"{year}-{month:02d}"
+                    logger.info("ITF month %s: fetching calendar", label_month)
 
-                added = 0
-                for t in month_items:
-                    try:
-                        end_str = t.get("endDate", "")[:10]
-                        if end_str and date.fromisoformat(end_str) < today:
-                            # Tournament ended before today -> skip
-                            continue
-                    except ValueError:
-                        # If endDate is malformed, keep it rather than accidentally dropping it
-                        pass
-                    seen[t["tournamentKey"]] = t
-                    added += 1
+                    month_items = scrape_calendar_month(year, month, page)
+                    logger.info(
+                        "ITF month %s: %d items from calendar",
+                        label_month,
+                        len(month_items),
+                    )
 
-                logger.info(
-                    "ITF month %s: %d upcoming tournaments kept (total=%d)",
-                    label_month,
-                    added,
-                    len(seen),
-                )
-
-                if fetch_details and month_items:
-                    month_needs_scrape: list[dict] = []
-
+                    added = 0
                     for t in month_items:
-                        key = t["tournamentKey"]
-                        current = seen.get(key)
-                        if not current:
-                            continue
+                        try:
+                            end_str = t.get("endDate", "")[:10]
+                            if end_str and date.fromisoformat(end_str) < today:
+                                continue
+                        except ValueError:
+                            pass
+                        seen[t["tournamentKey"]] = t
+                        added += 1
 
-                        ex = existing.get(key)
+                    logger.info(
+                        "ITF month %s: %d upcoming tournaments kept (total=%d)",
+                        label_month,
+                        added,
+                        len(seen),
+                    )
 
-                        if not ex:
-                            month_needs_scrape.append(current)
-                            continue
+                    if i < len(months) - 1:
+                        time.sleep(random.uniform(sleep_min, sleep_max))
 
-                        if _needs_rescrape(current, ex):
-                            logger.info("Re-scraping changed tournament %s", key)
-                            month_needs_scrape.append(current)
-                            continue
+                # Phase 2: reuse existing details; queue those that need a refresh
+                needs_scrape: list[dict] = []
+                for key, current in seen.items():
+                    ex = existing.get(key)
+                    if not ex:
+                        needs_scrape.append(current)
+                        continue
 
-                        current.update(
-                            {
-                                "venueName": ex.get("venueName"),
-                                "venueAddress": ex.get("venueAddress"),
-                                "lat": ex.get("lat"),
-                                "lng": ex.get("lng"),
-                            }
-                        )
+                    if _needs_rescrape(current, ex):
+                        logger.info("Re-scraping changed tournament %s", key)
+                        needs_scrape.append(current)
 
-                    total_details = len(month_needs_scrape)
-                    for j, t in enumerate(month_needs_scrape, start=1):
+                    # Keep prior venue/coords until a successful re-scrape replaces them
+                    # (safe to persist mid-run without wiping good data)
+                    current.update(
+                        {
+                            "venueName": ex.get("venueName"),
+                            "venueAddress": ex.get("venueAddress"),
+                            "lat": ex.get("lat"),
+                            "lng": ex.get("lng"),
+                        }
+                    )
+
+                queued = len(needs_scrape)
+                if max_details is not None:
+                    needs_scrape = needs_scrape[: max(0, max_details)]
+
+                logger.info(
+                    "ITF calendar complete: %d tournaments (%d detail-scrape now, %d queued, %d with existing details)",
+                    len(seen),
+                    len(needs_scrape),
+                    queued,
+                    len(seen) - queued,
+                )
+                _persist("ITF after calendar")
+
+                # Phase 3: detail + geocode in batches
+                if fetch_details and needs_scrape:
+                    total_details = len(needs_scrape)
+                    batch_size = max(1, save_batch_size)
+
+                    for j, t in enumerate(needs_scrape, start=1):
                         name = t.get("tournamentName", t["tournamentKey"])
-                        logger.info(
-                            "ITF detail %d/%d [%s]: %s",
-                            j,
-                            total_details,
-                            label_month,
-                            name,
-                        )
+                        logger.info("ITF detail %d/%d: %s", j, total_details, name)
 
                         detail = scrape_tournament_detail(page, t["tournamentLink"])
 
@@ -427,7 +504,7 @@ def scrape_itf_months(
                         host_nation = t.get("hostNation", "")
                         country_code = normalize_country_code(t.get("hostNationCode", ""))
 
-                        lat, lng = geocode_venue_recursive(
+                        lat, lng = geocoder.geocode_venue(
                             venue_name,
                             venue_address,
                             location,
@@ -438,27 +515,23 @@ def scrape_itf_months(
                         detail["lat"], detail["lng"] = lat, lng
                         t.update(detail)
 
+                        if j % batch_size == 0 or j == total_details:
+                            _persist(f"ITF detail batch {j}/{total_details}")
+
                         if j < total_details:
                             time.sleep(random.uniform(sleep_min, sleep_max))
 
                     logger.info(
-                        "ITF month %s: detail scrape finished (%d scraped, %d reused, total=%d)",
-                        label_month,
+                        "ITF detail scrape finished: %d scraped, %d total",
                         total_details,
-                        len(month_items) - total_details,
                         len(seen),
                     )
 
-                    if data_manager:
-                        data_manager.save_tournaments(list(seen.values()))
-                        logger.info("ITF month %s: tournaments saved", label_month)
-
-                if i < len(months) - 1:
-                    time.sleep(random.uniform(sleep_min, sleep_max))
-
-        finally:
-            browser.close()
-            logger.info("Browser closed")
+            finally:
+                browser.close()
+                logger.info("Browser closed")
+    finally:
+        geocoder.close()
 
     logger.info(
         "ITF scrape finished: %d tournaments collected for year=%s months=%s",
