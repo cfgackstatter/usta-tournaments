@@ -469,29 +469,17 @@ def scrape_itf_months(
                         needs_scrape.append(current)
                         continue
 
-                    itf_cc = (current.get("hostNationCode") or "").upper()
-                    # Non-ISO ITF codes (e.g. BRN=Bahrain) may have been geocoded as the
-                    # ISO country (Brunei); clear coords so they are refreshed.
-                    wrong_iso_geocode = itf_cc in ITF_COUNTRY_TO_ISO
-
-                    if _needs_rescrape(current, ex) or wrong_iso_geocode:
-                        if wrong_iso_geocode:
-                            logger.info(
-                                "Re-geocoding %s (ITF code %s → %s)",
-                                key,
-                                itf_cc,
-                                ITF_COUNTRY_TO_ISO[itf_cc],
-                            )
-                        else:
-                            logger.info("Re-scraping changed tournament %s", key)
+                    if _needs_rescrape(current, ex):
+                        logger.info("Re-scraping changed tournament %s", key)
                         needs_scrape.append(current)
 
+                    # Keep prior venue/coords until a successful re-scrape replaces them
                     current.update(
                         {
                             "venueName": ex.get("venueName"),
                             "venueAddress": ex.get("venueAddress"),
-                            "lat": None if wrong_iso_geocode else ex.get("lat"),
-                            "lng": None if wrong_iso_geocode else ex.get("lng"),
+                            "lat": ex.get("lat"),
+                            "lng": ex.get("lng"),
                         }
                     )
 
