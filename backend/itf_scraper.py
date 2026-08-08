@@ -34,6 +34,12 @@ CALENDAR_PAGE_SIZE = 100
 
 CHANGE_FIELDS = ("tournamentName", "startDate", "endDate", "status")
 
+# ITF hostNationCode values that are not ISO 3166-1 alpha-3
+ITF_COUNTRY_TO_ISO = {
+    "BRN": "BH",  # ITF Bahrain; ISO alpha-3 BRN is Brunei (BN), Bahrain is BHR
+}
+
+# Nominatim alpha-2 fallbacks after a failed geocode in the primary country
 COUNTRY_CODE_FALLBACKS = {
     "IE": "GB",  # Northern Ireland filed under IRL but geocodes as GBR
     "TW": "CN",  # Chinese Taipei (TPE) fallback to China
@@ -44,6 +50,10 @@ COUNTRY_CODE_FALLBACKS = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _valid_coord(v: Any) -> bool:
+    return v is not None and not (isinstance(v, float) and math.isnan(v))
 
 
 def _retry(label: str, fn: Callable[[], Any], retries: int = MAX_RETRIES) -> Any:
@@ -223,10 +233,13 @@ def scrape_tournament_detail(page, tournament_link: str) -> dict:
 
 
 def normalize_country_code(itf_code: str) -> Optional[str]:
-    """Convert ITF alpha-3 nation code to Nominatim ISO alpha-2."""
+    """Convert ITF nation code to Nominatim ISO alpha-2."""
     if not itf_code:
         return None
-    country = pycountry.countries.get(alpha_3=itf_code.upper())
+    code = itf_code.upper()
+    if code in ITF_COUNTRY_TO_ISO:
+        return ITF_COUNTRY_TO_ISO[code]
+    country = pycountry.countries.get(alpha_3=code)
     return country.alpha_2 if country else None
 
 
@@ -257,7 +270,7 @@ class NominatimGeocoder:
 
         params: dict[str, Any] = {"q": query, "format": "json", "limit": 1}
         if country_code:
-            params["countrycodes"] = country_code
+            params["countrycodes"] = country_code.lower()
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
@@ -355,9 +368,6 @@ class NominatimGeocoder:
 
 
 def _needs_rescrape(t: dict, ex: Optional[dict]) -> bool:
-    def _valid_coord(v) -> bool:
-        return v is not None and not (isinstance(v, float) and math.isnan(v))
-
     if not ex:
         return True
     has_coords = _valid_coord(ex.get("lat")) and _valid_coord(ex.get("lng"))
@@ -459,18 +469,29 @@ def scrape_itf_months(
                         needs_scrape.append(current)
                         continue
 
-                    if _needs_rescrape(current, ex):
-                        logger.info("Re-scraping changed tournament %s", key)
+                    itf_cc = (current.get("hostNationCode") or "").upper()
+                    # Non-ISO ITF codes (e.g. BRN=Bahrain) may have been geocoded as the
+                    # ISO country (Brunei); clear coords so they are refreshed.
+                    wrong_iso_geocode = itf_cc in ITF_COUNTRY_TO_ISO
+
+                    if _needs_rescrape(current, ex) or wrong_iso_geocode:
+                        if wrong_iso_geocode:
+                            logger.info(
+                                "Re-geocoding %s (ITF code %s → %s)",
+                                key,
+                                itf_cc,
+                                ITF_COUNTRY_TO_ISO[itf_cc],
+                            )
+                        else:
+                            logger.info("Re-scraping changed tournament %s", key)
                         needs_scrape.append(current)
 
-                    # Keep prior venue/coords until a successful re-scrape replaces them
-                    # (safe to persist mid-run without wiping good data)
                     current.update(
                         {
                             "venueName": ex.get("venueName"),
                             "venueAddress": ex.get("venueAddress"),
-                            "lat": ex.get("lat"),
-                            "lng": ex.get("lng"),
+                            "lat": None if wrong_iso_geocode else ex.get("lat"),
+                            "lng": None if wrong_iso_geocode else ex.get("lng"),
                         }
                     )
 
