@@ -29,6 +29,47 @@ usta_data_manager = USTADataManager()
 itf_data_manager = ITFDataManager()
 
 
+# Canonical filter codes shared by USTA + ITF (frontend label maps use these keys)
+_SURFACE_ALIASES = {
+    "hard": "hard",
+    "grass": "grass",
+    "clay": "clay",
+    "carpet": "carpet",
+    "greenclay": "greenClay",
+    "redclay": "redClay",
+    "claygreen": "greenClay",
+    "clayred": "redClay",
+}
+_COURT_ALIASES = {
+    "indoor": "indoor",
+    "outdoor": "outdoor",
+}
+
+
+def _norm_key(value: Any) -> str:
+    return "".join(str(value).strip().lower().split()).replace("_", "").replace("-", "")
+
+
+def normalize_surface(value: Any) -> str | None:
+    """Map source-specific surface strings to a shared filter code."""
+    if value is None or isinstance(value, float):
+        return None
+    text = str(value).strip()
+    if not text or text.lower() == "unknown":
+        return None
+    return _SURFACE_ALIASES.get(_norm_key(text), text)
+
+
+def normalize_court_location(value: Any) -> str | None:
+    """Map Indoor/Outdoor variants to indoor/outdoor."""
+    if value is None or isinstance(value, float):
+        return None
+    text = str(value).strip()
+    if not text or text.lower() == "unknown":
+        return None
+    return _COURT_ALIASES.get(_norm_key(text), text.lower())
+
+
 # ---------- USTA Helpers ----------
 
 def get_tournament_categories(tournament: Dict[str, Any]) -> List[str]:
@@ -80,10 +121,10 @@ def extract_event_details(tournament: Dict[str, Any]) -> List[Dict[str, Any]]:
         age_category = division.get("ageCategory", {}) or {}
 
         detail = {
-            "surface": (event.get("surface") or "").strip() or None,
-            "courtLocation": (event.get("courtLocation") or "").strip() or None,
-            "gender": (division.get("gender") or "").strip() or None,
-            "eventType": (division.get("eventType") or "").strip() or None,
+            "surface": normalize_surface(event.get("surface")),
+            "courtLocation": normalize_court_location(event.get("courtLocation")),
+            "gender": (division.get("gender") or "").strip().lower() or None,
+            "eventType": (division.get("eventType") or "").strip().lower() or None,
             "todsCode": (age_category.get("todsCode") or "").strip() or None,
         }
 
@@ -212,8 +253,8 @@ def serialize_itf_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
         "categories":            ["Adult"],
         "level":                 f"ITF {t.get('category', '')}".strip(),
         "events":                [{
-            "surface":       _val(t.get("surfaceDesc")),
-            "courtLocation": _val(t.get("indoorOrOutDoor")),
+            "surface":       normalize_surface(t.get("surfaceDesc")),
+            "courtLocation": normalize_court_location(t.get("indoorOrOutDoor")),
             "gender":        "coed",
             "eventType":     "singles",
             "todsCode":      "30O",

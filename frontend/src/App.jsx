@@ -165,9 +165,11 @@ function App() {
 
   const surfaceLabels = {
     'hard': 'Hard',
+    'clay': 'Clay',
     'greenClay': 'Clay (Green)',
     'redClay': 'Clay (Red)',
     'grass': 'Grass',
+    'carpet': 'Carpet',
   }
 
   const courtLocationLabels = {
