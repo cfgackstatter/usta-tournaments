@@ -135,7 +135,7 @@ make logs
 ### Data update schedule (on server)
 
 - **USTA**: daily at midnight UTC (`make update-usta` to run manually)
-- **ITF**: weekly on Mondays at 1am UTC (`make update-itf` to run manually)
+- **ITF**: weekly on Mondays at 1am UTC, 12 months ahead (`make update-itf` to run manually)
 - **Deploy**: installs Chromium system libs only — does **not** scrape or download Playwright browsers (run `make update` after deploy; first ITF update installs browsers)
 
 ## Tech Stack
