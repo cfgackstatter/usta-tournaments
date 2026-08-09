@@ -4,7 +4,9 @@ FastAPI server for tournament data.
 import logging
 import os
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from pathlib import Path
+from threading import Lock
+from typing import List, Dict, Any, Optional, Callable
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException
@@ -31,6 +33,36 @@ app.add_middleware(
 usta_data_manager = USTADataManager()
 itf_data_manager = ITFDataManager()
 utr_data_manager = UTRDataManager()
+
+# In-memory map payloads, invalidated when the source parquet mtime changes.
+_list_cache: Dict[str, tuple[Optional[float], List[Dict[str, Any]]]] = {}
+_list_cache_lock = Lock()
+
+
+def _parquet_mtime(path: Path) -> Optional[float]:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def cached_map_list(
+    cache_key: str,
+    parquet_path: Path,
+    loader: Callable[[], List[Dict[str, Any]]],
+    serializer: Callable[[Dict[str, Any]], Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Return serialized map rows, reusing cache while parquet mtime is unchanged."""
+    mtime = _parquet_mtime(parquet_path)
+    with _list_cache_lock:
+        cached = _list_cache.get(cache_key)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+
+    map_data = [s for t in loader() if (s := serializer(t))]
+    with _list_cache_lock:
+        _list_cache[cache_key] = (mtime, map_data)
+    return map_data
 
 
 # Canonical filter codes shared across sources (frontend label maps use these keys)
@@ -447,8 +479,12 @@ def serialize_utr_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
 @app.get("/api/usta-tournaments")
 async def get_usta_tournaments() -> List[Dict[str, Any]]:
     try:
-        tournaments = usta_data_manager.get_tournaments()
-        map_data = [s for t in tournaments if (s := serialize_usta_tournament(t))]
+        map_data = cached_map_list(
+            "usta",
+            usta_data_manager.tournaments_file,
+            usta_data_manager.get_tournaments,
+            serialize_usta_tournament,
+        )
         logger.info("Returning %d USTA tournaments", len(map_data))
         return map_data
     except Exception as exc:
@@ -476,8 +512,12 @@ async def get_usta_tournament_detail(tournament_id: str) -> Dict[str, Any]:
 @app.get("/api/itf-tournaments")
 async def get_itf_tournaments() -> List[Dict[str, Any]]:
     try:
-        tournaments = itf_data_manager.get_tournaments()
-        map_data = [s for t in tournaments if (s := serialize_itf_tournament(t))]
+        map_data = cached_map_list(
+            "itf",
+            itf_data_manager.tournaments_file,
+            itf_data_manager.get_tournaments,
+            serialize_itf_tournament,
+        )
         logger.info("Returning %d ITF tournaments", len(map_data))
         return map_data
     except Exception as exc:
@@ -505,8 +545,12 @@ async def get_itf_tournament_detail(itf_id: str) -> Dict[str, Any]:
 @app.get("/api/utr-tournaments")
 async def get_utr_tournaments() -> List[Dict[str, Any]]:
     try:
-        tournaments = utr_data_manager.get_tournaments()
-        map_data = [s for t in tournaments if (s := serialize_utr_tournament(t))]
+        map_data = cached_map_list(
+            "utr",
+            utr_data_manager.tournaments_file,
+            utr_data_manager.get_tournaments,
+            serialize_utr_tournament,
+        )
         logger.info("Returning %d UTR tournaments", len(map_data))
         return map_data
     except Exception as exc:

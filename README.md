@@ -40,7 +40,7 @@ make install
 # Fetch initial data
 make data
 
-# Run both servers (backend :8000, frontend :5173)
+# Run both servers (backend :8000, frontend :3000, proxies /api → :8000)
 make dev
 ```
 
@@ -50,40 +50,44 @@ make dev
 make help
 ```
 
-| Command           | Description                             |
-| ----------------- | --------------------------------------- |
-| make install      | Install backend + frontend dependencies |
-| make dev          | Run both dev servers concurrently       |
-| make dev-backend  | FastAPI on port 8000 only               |
-| make dev-frontend | Vite on port 5173 only                  |
-| make data         | Fetch USTA + ITF + UTR                  |
-| make data-usta    | Fetch USTA only                         |
-| make data-itf     | Fetch ITF only                          |
-| make data-utr     | Fetch UTR tournaments only              |
-| make build        | Build frontend dist                     |
-| make deploy       | Build frontend + eb deploy              |
-| make status       | eb status                               |
-| make health       | eb health                               |
-| make logs         | eb logs                                 |
-| make ssh          | eb ssh                                  |
-| make update       | Run both update scripts on server       |
-| make clean        | Remove build artifacts + __pycache__    |
+| Command             | Description                                      |
+| ------------------- | ------------------------------------------------ |
+| make install        | Install backend + frontend dependencies          |
+| make dev            | Run both dev servers (waits for API before Vite) |
+| make dev-backend    | FastAPI on port 8000 only                        |
+| make dev-frontend   | Vite on port 3000 only (proxies `/api` → :8000)  |
+| make data           | Fetch USTA + ITF + UTR                           |
+| make data-usta      | Fetch USTA only                                  |
+| make data-itf       | Fetch ITF only                                   |
+| make data-utr       | Fetch UTR tournaments only                       |
+| make build          | Build frontend dist                              |
+| make deploy         | Build frontend + eb deploy                       |
+| make deploy-and-update | Deploy, then run update scripts on server     |
+| make status         | eb status                                        |
+| make health         | eb health                                        |
+| make logs           | eb logs                                          |
+| make ssh            | eb ssh                                           |
+| make update         | Run USTA + ITF + UTR update scripts on server    |
+| make update-usta    | Run USTA update script on server                 |
+| make update-itf     | Run ITF update script on server                  |
+| make update-utr     | Run UTR update script on server                  |
+| make clean          | Remove build artifacts + `__pycache__`           |
+| make clean-remote-data | Remove Parquet data on the EB server          |
 
 ## Project Structure
 
 ```text
-tennis-tournament-map/
+tennis-tournaments/
 ├── backend/
 │   ├── __init__.py
-│   ├── server.py               # FastAPI app + serializers
+│   ├── server.py               # FastAPI app + serializers + response cache
 │   ├── main.py                 # CLI data updater
 │   ├── usta_scraper.py         # USTA API scraper
 │   ├── usta_data_manager.py    # USTA Parquet storage
 │   ├── itf_scraper.py          # ITF calendar + detail scraper
 │   ├── itf_data_manager.py     # ITF Parquet storage
 │   ├── utr_scraper.py          # UTR events API scraper
-│   ├── utr_data_manager.py     # UTR Parquet storage
-│   └── requirements.txt
+│   └── utr_data_manager.py     # UTR Parquet storage
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx
@@ -95,10 +99,11 @@ tennis-tournament-map/
 │   ├── itf_tournaments.parquet
 │   └── utr_tournaments.parquet
 ├── .ebextensions/
-│   ├── 01_setup.config         # Uvicorn + ASGI
-│   ├── 02_cron.config          # Cron daemon + update scripts
-│   ├── 04_post_deploy_update.config  # Chromium/Playwright install
-│   └── 04_logrotate.config     # Log rotation
+│   ├── 01_environment.config         # App env / shared data dir
+│   ├── 02_cron.config                # Cron + update scripts
+│   ├── 03_logging.config             # Log streaming
+│   └── 04_post_deploy_update.config  # Chromium system libs
+├── requirements.txt
 ├── Makefile
 ├── Procfile
 └── README.md
@@ -116,6 +121,8 @@ tennis-tournament-map/
 | GET /api/utr-tournaments/{id}  | Raw UTR tournament detail   |
 | GET /api/freshness             | Data scrape age             |
 | GET /api/health                | Health check                |
+
+List endpoints cache the serialized map payload in memory and refresh when the source Parquet file’s mtime changes.
 
 ## Deployment (AWS Elastic Beanstalk)
 
@@ -144,6 +151,7 @@ make logs
 ### Data update schedule (on server)
 
 - **USTA**: daily at midnight UTC (`make update-usta` to run manually)
+- **UTR**: daily at 00:30 UTC (`make update-utr` to run manually)
 - **ITF**: weekly on Mondays at 1am UTC, 12 months ahead (`make update-itf` to run manually)
 - **Deploy**: installs Chromium system libs only — does **not** scrape or download Playwright browsers (run `make update` after deploy; first ITF update installs browsers)
 

@@ -3,7 +3,6 @@ uvicorn[standard]>=0.52.1
 gunicorn>=26.0.0
 pandas>=2.3.3
 pyarrow>=25.0.0
-python-dotenv>=1.2.2
 python-dateutil>=2.9.0
 requests>=2.34.2
 beautifulsoup4>=4.15.0
