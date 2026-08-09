@@ -182,9 +182,9 @@ function App() {
   const [selectedCategories, setSelectedCategories] = useState(new Set())
   const [availableCategories, setAvailableCategories] = useState([])
 
-  // Level filter state
+  // Level filter state (grouped by source for the dropdown UI)
   const [selectedLevels, setSelectedLevels] = useState(new Set())
-  const [availableLevels, setAvailableLevels] = useState([])
+  const [availableLevels, setAvailableLevels] = useState({ usta: [], itf: [] })
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false)
 
   // Event filter states - dropdown style like Level
@@ -275,29 +275,41 @@ function App() {
         setAllTournaments(combined)
         setDataFreshness(freshness)
 
-        // Extract unique categories from t.categories (array)
+        // Categories: USTA-prefixed groups + ITF, with a stable preferred order
         const categorySet = new Set()
         combined.forEach(t => {
           (t.categories || []).forEach(c => {
             if (c) categorySet.add(c)
           })
         })
-        const categories = [...categorySet].sort()
+        const categoryOrder = [
+          'USTA Adult',
+          'USTA Junior',
+          'USTA Wheelchair',
+          'USTA Wtnplay',
+          'ITF',
+        ]
+        const categories = [
+          ...categoryOrder.filter(c => categorySet.has(c)),
+          ...[...categorySet].filter(c => !categoryOrder.includes(c)).sort(),
+        ]
         setAvailableCategories(categories)
 
-        // Default to ONLY Adult selected
-        const defaultCategories = new Set()
-        if (categories.includes('Adult')) {
-          defaultCategories.add('Adult')
-        }
+        // Default: USTA Adult + ITF
+        const defaultCategories = new Set(
+          ['USTA Adult', 'ITF'].filter(c => categorySet.has(c))
+        )
         setSelectedCategories(defaultCategories)
 
-        // Extract unique levels
-        const levels = [...new Set(combined.map(t => t.level).filter(Boolean))].sort()
-        setAvailableLevels(levels)
-
-        // Default to ALL levels selected
-        setSelectedLevels(new Set(levels))
+        // Levels grouped by source (ITF levels no longer carry an "ITF " prefix)
+        const ustaLevels = [...new Set(
+          ustaData.map(t => t.level).filter(Boolean)
+        )].sort()
+        const itfLevels = [...new Set(
+          itfData.map(t => t.level).filter(Boolean)
+        )].sort()
+        setAvailableLevels({ usta: ustaLevels, itf: itfLevels })
+        setSelectedLevels(new Set([...ustaLevels, ...itfLevels]))
 
         // Extract unique event properties from all 5 fields
         const surfaceSet = new Set()
@@ -434,8 +446,13 @@ function App() {
     })
   }
 
+  const allAvailableLevels = () => [
+    ...(availableLevels.usta || []),
+    ...(availableLevels.itf || []),
+  ]
+
   const selectAllLevels = () => {
-    setSelectedLevels(new Set(availableLevels))
+    setSelectedLevels(new Set(allAvailableLevels()))
   }
 
   const clearAllLevels = () => {
@@ -663,18 +680,40 @@ function App() {
             </div>
             {levelDropdownOpen && (
               <div className="dropdown-content">
-                <div className="type-checkboxes">
-                  {availableLevels.map(level => (
-                    <label key={level} className="type-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedLevels.has(level)}
-                        onChange={() => toggleLevel(level)}
-                      />
-                      <span>{level}</span>
-                    </label>
-                  ))}
-                </div>
+                {availableLevels.usta?.length > 0 && (
+                  <div className="filter-section">
+                    <div className="filter-section-title">USTA</div>
+                    <div className="type-checkboxes">
+                      {availableLevels.usta.map(level => (
+                        <label key={`usta-${level}`} className="type-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={selectedLevels.has(level)}
+                            onChange={() => toggleLevel(level)}
+                          />
+                          <span>{level}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {availableLevels.itf?.length > 0 && (
+                  <div className="filter-section">
+                    <div className="filter-section-title">ITF</div>
+                    <div className="type-checkboxes">
+                      {availableLevels.itf.map(level => (
+                        <label key={`itf-${level}`} className="type-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={selectedLevels.has(level)}
+                            onChange={() => toggleLevel(level)}
+                          />
+                          <span>{level}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="type-filter-actions">
                   <button onClick={selectAllLevels} className="filter-btn">All</button>
                   <button onClick={clearAllLevels} className="filter-btn">None</button>

@@ -315,31 +315,51 @@ body {
   border: 1px solid #e0e0e0;
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .dropdown-content .type-checkboxes {
-  max-height: 200px;
-  overflow-y: auto;
   margin-bottom: 8px;
-  padding-right: 4px;
+}
+
+.filter-section {
+  margin-bottom: 10px;
+}
+
+.filter-section:last-of-type {
+  margin-bottom: 8px;
+}
+
+.filter-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #5d6d7e;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+
+.filter-section .type-checkboxes {
+  margin-bottom: 0;
 }
 
 /* Scrollbar styling for dropdown */
-.dropdown-content .type-checkboxes::-webkit-scrollbar {
+.dropdown-content::-webkit-scrollbar {
   width: 6px;
 }
 
-.dropdown-content .type-checkboxes::-webkit-scrollbar-track {
+.dropdown-content::-webkit-scrollbar-track {
   background: #f1f1f1;
   border-radius: 3px;
 }
 
-.dropdown-content .type-checkboxes::-webkit-scrollbar-thumb {
+.dropdown-content::-webkit-scrollbar-thumb {
   background: #bdc3c7;
   border-radius: 3px;
 }
 
-.dropdown-content .type-checkboxes::-webkit-scrollbar-thumb:hover {
+.dropdown-content::-webkit-scrollbar-thumb:hover {
   background: #95a5a6;
 }
 

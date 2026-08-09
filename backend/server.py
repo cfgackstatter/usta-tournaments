@@ -76,12 +76,12 @@ def normalize_court_location(value: Any) -> str | None:
 
 def get_tournament_categories(tournament: Dict[str, Any]) -> List[str]:
     """
-    Return list of category names from levelCategories, title‑cased.
+    Return USTA-prefixed category names from levelCategories, title‑cased.
 
     Example input:
       "levelCategories": [{"name": "junior"}, {"name": "adult"}]
     Output:
-      ["Junior", "Adult"]
+      ["USTA Junior", "USTA Adult"]
     """
     level_categories = tournament.get("levelCategories", []) or []
     categories: List[str] = []
@@ -93,7 +93,7 @@ def get_tournament_categories(tournament: Dict[str, Any]) -> List[str]:
             name = str(item).strip()
 
         if name:
-            categories.append(name.title())
+            categories.append(f"USTA {name.title()}")
 
     return categories
 
@@ -300,8 +300,8 @@ def serialize_itf_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
         "venueAddress":          t.get("venueAddress"),
         "url":                   url,
         "source":                "ITF",
-        "categories":            ["Adult"],
-        "level":                 f"ITF {t.get('category', '')}".strip(),
+        "categories":            ["ITF"],
+        "level":                 _val(t.get("category"), ""),
         "events":                [{
             "surface":       normalize_surface(t.get("surfaceDesc")),
             "courtLocation": normalize_court_location(t.get("indoorOrOutDoor")),

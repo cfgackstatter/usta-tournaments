@@ -19,8 +19,8 @@ An interactive map for discovering USTA and ITF Masters Tour tennis tournaments.
 
 ### Filtering
 - **Date range**
-- **Category**: Adult, Junior, Wheelchair
-- **Level**: USTA Level 1–7, ITF MT100–MT1000
+- **Category**: USTA Adult / Junior / Wheelchair / Wtnplay, plus ITF (defaults: USTA Adult + ITF)
+- **Level**: Grouped by source — USTA levels and ITF grades (MT100–MT1000, etc.)
 - **Surface**: Hard, Clay, Grass
 - **Court location**: Indoor / Outdoor
 - **Gender**, **Event type**, **Age group**
