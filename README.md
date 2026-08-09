@@ -3,8 +3,8 @@
 An interactive map for discovering USTA and ITF Masters Tour tennis tournaments.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)
-![React](https://img.shields.io/badge/React-18+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.141+-green.svg)
+![React](https://img.shields.io/badge/React-19+-blue.svg)
 
 ## Features
 
@@ -145,8 +145,8 @@ make logs
 | API        | FastAPI + Uvicorn                     |
 | Data       | Pandas + PyArrow (Parquet)            |
 | Scraping   | Requests + Playwright + BeautifulSoup |
-| Frontend   | React 18 + Vite                       |
-| Map        | React Leaflet + MarkerCluster         |
+| Frontend   | React 19 + Vite 7                     |
+| Map        | React Leaflet 5 + MarkerCluster       |
 | Deployment | AWS Elastic Beanstalk + Nginx         |
 
 ## License

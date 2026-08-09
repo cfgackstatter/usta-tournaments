@@ -9,17 +9,18 @@
 
 PYTHON := python3
 VENV := backend/venv
-PIP := $(VENV)/bin/pip
 PYTHON_VENV := $(VENV)/bin/python3
+# Prefer `python -m` so scripts keep working if the project directory is renamed
+PIP := $(PYTHON_VENV) -m pip
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 
 install: install-backend install-frontend
 
 install-backend:
-	$(PYTHON) -m venv $(VENV)
+	$(PYTHON) -m venv --clear $(VENV)
 	$(PIP) install --upgrade pip
-	$(PIP) install -r backend/requirements.txt
+	$(PIP) install -r requirements.txt
 
 install-frontend:
 	cd frontend && npm install
@@ -27,7 +28,7 @@ install-frontend:
 # ─── Development ──────────────────────────────────────────────────────────────
 
 dev-backend:
-	cd backend && ../$(VENV)/bin/uvicorn server:app --reload --port 8000
+	PYTHONPATH=. $(PYTHON_VENV) -m uvicorn backend.server:app --reload --port 8000
 
 dev-frontend:
 	cd frontend && npm run dev
@@ -103,7 +104,7 @@ help:
 	@echo "  Development"
 	@echo "    make dev              Run backend + frontend dev servers concurrently"
 	@echo "    make dev-backend      Run FastAPI dev server only (port 8000)"
-	@echo "    make dev-frontend     Run Vite dev server only (port 5173)"
+	@echo "    make dev-frontend     Run Vite dev server only (port 3000, proxies /api → :8000)"
 	@echo ""
 	@echo "  Data"
 	@echo "    make data             Fetch USTA (10 pages) + ITF (2 months)"

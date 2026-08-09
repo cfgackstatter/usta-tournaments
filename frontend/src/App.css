@@ -97,6 +97,20 @@ body {
   font-weight: 500;
 }
 
+.data-freshness {
+  font-size: 12px;
+  color: #7f8c8d;
+  margin-top: -4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.freshness-sep {
+  opacity: 0.6;
+}
+
 /* ===================================
    SHARED FILTER STYLES
    =================================== */

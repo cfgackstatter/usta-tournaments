@@ -22,22 +22,21 @@ L.Marker.prototype.options.icon = DefaultIcon
 
 const getTournamentStatus = (tournament) => {
   const now = new Date()
-  const startDate = new Date(tournament.startDate)
-  const entriesCloseDateTime = tournament.entriesCloseDateTime 
-    ? new Date(tournament.entriesCloseDateTime) 
+  // Prefer absolute UTC instants; fall back to startDate for ITF date-only values
+  const startInstant = tournament.startDateTime || tournament.startDate
+  const startDate = startInstant ? new Date(startInstant) : null
+  const entriesCloseDateTime = tournament.entriesCloseDateTime
+    ? new Date(tournament.entriesCloseDateTime)
     : null
-  
-  // Check if tournament has started (red)
-  if (now >= startDate) {
+
+  if (startDate && !isNaN(startDate) && now >= startDate) {
     return 'started'
   }
-  
-  // Check if entries are closed (orange)
-  if (entriesCloseDateTime && now >= entriesCloseDateTime) {
+
+  if (entriesCloseDateTime && !isNaN(entriesCloseDateTime) && now >= entriesCloseDateTime) {
     return 'entries-closed'
   }
-  
-  // Still open for registration (blue)
+
   return 'open'
 }
 
@@ -75,34 +74,94 @@ const getMarkerIcon = (status, source) => {
   }
 }
 
-// Helper to format tournament date range
-const formatDateRange = (startDateStr, endDateStr) => {
-  // Parse YYYY-MM-DD without timezone conversion
+// Format a Date in a specific IANA timezone (tournament-local display).
+const formatInTimeZone = (date, timeZone, options) => {
+  try {
+    return date.toLocaleString('en-US', timeZone ? { ...options, timeZone } : options)
+  } catch {
+    return date.toLocaleString('en-US', options)
+  }
+}
+
+const isMidnightLocal = (date, timeZone) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZone || undefined,
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const hour = Number(parts.find(p => p.type === 'hour')?.value ?? 0)
+  const minute = Number(parts.find(p => p.type === 'minute')?.value ?? 0)
+  return hour === 0 && minute === 0
+}
+
+// Tournament start/end: always tournament-local calendar (never viewer's TZ).
+const formatDateRange = (tournament) => {
+  const { startDate, endDate, startDateTime, endDateTime, timeZone } = tournament
+
+  // USTA (and any source with UTC instants + IANA zone): format in tournament TZ
+  if (startDateTime && endDateTime && timeZone) {
+    const start = new Date(startDateTime)
+    const end = new Date(endDateTime)
+    if (!isNaN(start) && !isNaN(end)) {
+      // Most USTA events are midnight→end-of-day; only show clock times when start isn't midnight
+      const showTimes = !isMidnightLocal(start, timeZone)
+      const dateOpts = { month: 'short', day: 'numeric' }
+      const endDateOpts = { month: 'short', day: 'numeric', year: 'numeric' }
+      const startLabel = showTimes
+        ? formatInTimeZone(start, timeZone, {
+            ...dateOpts,
+            hour: 'numeric',
+            minute: '2-digit',
+          })
+        : formatInTimeZone(start, timeZone, dateOpts)
+      const endLabel = showTimes
+        ? formatInTimeZone(end, timeZone, {
+            ...endDateOpts,
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZoneName: 'short',
+          })
+        : formatInTimeZone(end, timeZone, endDateOpts)
+      return `${startLabel} - ${endLabel}`
+    }
+  }
+
+  // Date-only fallback (ITF): parse YYYY-MM-DD without timezone conversion
+  if (!startDate || !endDate) return ''
   const parseDate = (dateStr) => {
-    const [year, month, day] = dateStr.split('T')[0].split('-');
-    return new Date(year, month - 1, day);
-  };
-  
-  const startDate = parseDate(startDateStr);
-  const endDate = parseDate(endDateStr);
-  
-  const startYear = startDate.getFullYear();
-  const endYear = endDate.getFullYear();
-  
-  const startFormatted = startDate.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric' 
-  });
-  
-  // Only include year on end date, unless years differ
-  const endOptions = startYear === endYear 
-    ? { month: 'short', day: 'numeric', year: 'numeric' }
-    : { month: 'short', day: 'numeric', year: 'numeric' };
-  
-  const endFormatted = endDate.toLocaleDateString('en-US', endOptions);
-  
-  return `${startFormatted} - ${endFormatted}`;
-};
+    const [year, month, day] = dateStr.split('T')[0].split('-')
+    return new Date(year, month - 1, day)
+  }
+
+  const start = parseDate(startDate)
+  const end = parseDate(endDate)
+  const startFormatted = start.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
+  const endFormatted = end.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  return `${startFormatted} - ${endFormatted}`
+}
+
+// Registration deadline: viewer's local timezone
+const formatEntriesClose = (entriesCloseDateTime) => {
+  if (!entriesCloseDateTime) return null
+  const dt = new Date(entriesCloseDateTime)
+  if (isNaN(dt)) return null
+  return dt.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  })
+}
 
 function App() {
   const [allTournaments, setAllTournaments] = useState([])
@@ -182,6 +241,18 @@ function App() {
     return labelMap[value] || value // Return mapped label or original if not found
   }
 
+  const formatAge = (ageHours) => {
+    if (ageHours == null || Number.isNaN(ageHours)) return 'unknown'
+    if (ageHours < 1) {
+      const mins = Math.max(1, Math.round(ageHours * 60))
+      return `${mins}m ago`
+    }
+    if (ageHours < 48) return `${Math.round(ageHours)}h ago`
+    return `${Math.round(ageHours / 24)}d ago`
+  }
+
+  const [dataFreshness, setDataFreshness] = useState(null)
+
   // Fetch tournaments on mount
   useEffect(() => {
     Promise.all([
@@ -194,11 +265,15 @@ function App() {
         .then(res => {
           if (!res.ok) throw new Error('Failed to fetch ITF tournaments')
           return res.json()
-        })
+        }),
+      fetch('/api/freshness')
+        .then(res => (res.ok ? res.json() : null))
+        .catch(() => null),
     ])
-      .then(([ustaData, itfData]) => {
+      .then(([ustaData, itfData, freshness]) => {
         const combined = [...ustaData, ...itfData]
         setAllTournaments(combined)
+        setDataFreshness(freshness)
 
         // Extract unique categories from t.categories (array)
         const categorySet = new Set()
@@ -501,6 +576,21 @@ function App() {
             {filteredTournaments.length} of {allTournaments.length}
           </span>
         </div>
+        {dataFreshness && (
+          <div className="data-freshness" title="When tournament data was last scraped">
+            <span>
+              USTA {dataFreshness.usta?.available
+                ? formatAge(dataFreshness.usta.age_hours)
+                : 'no data'}
+            </span>
+            <span className="freshness-sep">·</span>
+            <span>
+              ITF {dataFreshness.itf?.available
+                ? formatAge(dataFreshness.itf.age_hours)
+                : 'no data'}
+            </span>
+          </div>
+        )}
 
         <div className="date-filters">
           <div className="filter-section-header" style={{ justifyContent: 'space-between' }}>
@@ -826,8 +916,15 @@ function App() {
 
                         <div className="detail-row">
                           <span className="icon">📅</span>
-                          <span>{formatDateRange(tournament.startDate, tournament.endDate)}</span>
+                          <span>{formatDateRange(tournament)}</span>
                         </div>
+
+                        {tournament.source === 'USTA' && tournament.entriesCloseDateTime && (
+                          <div className="detail-row">
+                            <span className="icon">⏰</span>
+                            <span>Entries close {formatEntriesClose(tournament.entriesCloseDateTime)}</span>
+                          </div>
+                        )}
 
                         {tournament.categories && (
                           <div className="detail-row">

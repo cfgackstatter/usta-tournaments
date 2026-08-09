@@ -3,7 +3,9 @@ FastAPI server for tournament data.
 """
 import logging
 import os
-from typing import List, Dict, Any
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -170,8 +172,46 @@ def build_usta_url(tournament: Dict[str, Any]) -> str | None:
     return f"https://playtennis.usta.com/Competitions/{org_slug}{url_path}"
 
 
+def parse_utc(value: Any) -> Optional[datetime]:
+    """Parse an ISO datetime into an aware UTC datetime."""
+    if value is None or isinstance(value, float):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def to_utc_iso(dt: Optional[datetime]) -> Optional[str]:
+    if dt is None:
+        return None
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def tournament_local_date(utc_dt: Optional[datetime], tz_name: Optional[str]) -> Optional[str]:
+    """Calendar date (YYYY-MM-DD) in the tournament's timezone."""
+    if utc_dt is None:
+        return None
+    if tz_name:
+        try:
+            return utc_dt.astimezone(ZoneInfo(tz_name)).date().isoformat()
+        except Exception:
+            pass
+    return utc_dt.date().isoformat()
+
+
 def serialize_usta_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert a raw USTA tournament dict into the map payload."""
+    """Convert a raw USTA tournament dict into the map payload.
+
+    USTA's timeZoneStart/EndDateTime values have unreliable offsets; use
+    startDateTime/endDateTime (UTC) plus timeZone for correctness.
+    """
     geo = (t.get("location") or {}).get("geo", {}) or {}
     lat = geo.get("latitude")
     lng = geo.get("longitude")
@@ -179,16 +219,26 @@ def serialize_usta_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
     location_info = get_location_details(t)
-    registration  = t.get("registrationRestrictions", {}) or {}
+    registration = t.get("registrationRestrictions", {}) or {}
+    tz_name = (t.get("timeZone") or "").strip() or None
+
+    start_utc = parse_utc(t.get("startDateTime"))
+    end_utc = parse_utc(t.get("endDateTime"))
+    close_utc = parse_utc(registration.get("entriesCloseDateTime"))
 
     return {
         "id":                    t.get("id"),
         "name":                  t.get("name"),
         "latitude":              lat,
         "longitude":             lng,
-        "startDate":             t.get("timeZoneStartDateTime"),
-        "endDate":               t.get("timeZoneEndDateTime"),
-        "entriesCloseDateTime":  registration.get("entriesCloseDateTime"),
+        # Calendar dates in tournament-local TZ (filters + date-only display)
+        "startDate":             tournament_local_date(start_utc, tz_name),
+        "endDate":               tournament_local_date(end_utc, tz_name),
+        # Absolute instants (status + timed display)
+        "startDateTime":         to_utc_iso(start_utc),
+        "endDateTime":           to_utc_iso(end_utc),
+        "entriesCloseDateTime":  to_utc_iso(close_utc),
+        "timeZone":              tz_name,
         "location":              location_info["full"],
         "city":                  location_info["city"],
         "state":                 location_info["state"],
@@ -320,11 +370,20 @@ async def get_itf_tournament_detail(itf_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     
 
-# ---------- Health ----------
+# ---------- Health / freshness ----------
 
 @app.get("/api/health")
 async def health_check() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/freshness")
+async def data_freshness() -> Dict[str, Any]:
+    """Return last-updated age for USTA and ITF parquet files."""
+    return {
+        "usta": usta_data_manager.get_freshness(),
+        "itf": itf_data_manager.get_freshness(),
+    }
 
 
 # ---------- Static / React ----------

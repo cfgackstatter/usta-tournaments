@@ -52,6 +52,17 @@ class ITFDataManager:
         size_mb = self.tournaments_file.stat().st_size / (1024 * 1024)
         logger.info(f"Saved {len(new_df)} ITF tournaments ({len(combined_df)} total) to {self.tournaments_file} ({size_mb:.2f} MB)")
 
+    def get_freshness(self) -> Dict[str, Any]:
+        """Return parquet file freshness (mtime-based)."""
+        if not self.tournaments_file.exists():
+            return {"available": False, "last_updated": None, "age_hours": None}
+        mtime = self.tournaments_file.stat().st_mtime
+        return {
+            "available": True,
+            "last_updated": datetime.fromtimestamp(mtime).isoformat(),
+            "age_hours": round((datetime.now().timestamp() - mtime) / 3600, 2),
+        }
+
     def get_tournaments(self) -> List[Dict[str, Any]]:
         if not self.tournaments_file.exists():
             logger.warning(f"ITF tournaments file does not exist: {self.tournaments_file}")
