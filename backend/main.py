@@ -11,6 +11,8 @@ from backend.usta_scraper import USTAScraper
 from backend.usta_data_manager import USTADataManager
 from backend.itf_scraper import scrape_itf_months
 from backend.itf_data_manager import ITFDataManager
+from backend.utr_scraper import UTRScraper
+from backend.utr_data_manager import UTRDataManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +49,31 @@ def update_usta_tournaments(max_pages: int = 10, sleep_min: float = 2, sleep_max
         logger.error(f"USTA update failed: {e}", exc_info=True)
         return False
     
+
+def update_utr_tournaments(max_pages: int = 20, sleep_min: float = 0.5, sleep_max: float = 1.5) -> bool:
+    """Fetch and save UTR tournament data. Returns True on success."""
+    logger.info(f"Starting UTR tournament update at {datetime.now()}")
+
+    try:
+        scraper = UTRScraper()
+        data_manager = UTRDataManager()
+
+        existing = data_manager.get_tournaments()
+        logger.info(f"BEFORE UPDATE: {len(existing)} UTR tournaments in storage")
+
+        tournaments = scraper.fetch_tournaments(max_pages, sleep_min, sleep_max)
+
+        if not tournaments:
+            logger.error("No UTR tournaments fetched")
+            return False
+        data_manager.save_tournaments(tournaments)
+        logger.info(f"AFTER UPDATE: {len(tournaments)} UTR tournaments saved")
+        return True
+
+    except Exception as e:
+        logger.error(f"UTR update failed: {e}", exc_info=True)
+        return False
+
 
 def update_itf_tournaments(
     months_back: int = 0,
@@ -111,10 +138,16 @@ def update_itf_tournaments(
 
 def main():
     parser = argparse.ArgumentParser(description="Tournament Map data updater")
-    parser.add_argument("--update", action="store_true", help="Update both USTA and ITF tournament data")
+    parser.add_argument("--update", action="store_true", help="Update USTA, ITF, and UTR tournament data")
     parser.add_argument("--update-usta", action="store_true", help="Update USTA tournament data only")
     parser.add_argument("--update-itf", action="store_true", help="Update ITF Masters Tour data only")
-    parser.add_argument("--max-pages", type=int, default=5, help="Max pages for USTA fetch")
+    parser.add_argument("--update-utr", action="store_true", help="Update UTR tournament data only")
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=5,
+        help="Max pages for USTA (100/page) or UTR (200/page) fetch",
+    )
     parser.add_argument("--sleep-min", type=float, default=2, help="Min sleep between requests")
     parser.add_argument("--sleep-max", type=float, default=5, help="Max sleep between requests")
     parser.add_argument("--months-back", type=int, default=0, help="ITF: months back from today to scrape")
@@ -134,7 +167,7 @@ def main():
 
     args = parser.parse_args()
 
-    if not any([args.update, args.update_usta, args.update_itf]):
+    if not any([args.update, args.update_usta, args.update_itf, args.update_utr]):
         parser.print_help()
         return
 
@@ -144,6 +177,12 @@ def main():
         ok = update_usta_tournaments(args.max_pages, args.sleep_min, args.sleep_max)
         if not ok:
             logger.error("USTA update failed")
+            success = False
+
+    if args.update or args.update_utr:
+        ok = update_utr_tournaments(args.max_pages, args.sleep_min, args.sleep_max)
+        if not ok:
+            logger.error("UTR update failed")
             success = False
 
     if args.update or args.update_itf:

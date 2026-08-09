@@ -1,6 +1,6 @@
 # Tennis Tournament Map
 
-An interactive map for discovering USTA and ITF Masters Tour tennis tournaments.
+An interactive map for discovering USTA, ITF Masters Tour, and UTR Sports tennis tournaments.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.141+-green.svg)
@@ -11,7 +11,8 @@ An interactive map for discovering USTA and ITF Masters Tour tennis tournaments.
 ### Interactive Map
 - **Color-coded markers** showing tournament status:
   - 🔵 Blue: USTA — registration open
-  - 🟢 Dark green: ITF Masters Tour - registration open
+  - 🟢 Dark green: ITF Masters Tour — registration open
+  - 🩵 Baby blue: UTR — registration open
   - 🟠 Orange: Registration closed
   - 🔴 Red: Tournament started
 - **Clustered markers** for dense areas
@@ -19,8 +20,8 @@ An interactive map for discovering USTA and ITF Masters Tour tennis tournaments.
 
 ### Filtering
 - **Date range**
-- **Category**: USTA Adult / Junior / Wheelchair / Wtnplay, plus ITF (defaults: USTA Adult + ITF)
-- **Level**: Grouped by source — USTA levels and ITF grades (MT100–MT1000, etc.)
+- **Category**: USTA Adult / Junior / Wheelchair / Wtnplay, ITF, UTR (defaults: USTA Adult + ITF + UTR)
+- **Level**: Grouped by source — USTA levels, ITF grades, UTR ranges
 - **Surface**: Hard, Clay, Grass
 - **Court location**: Indoor / Outdoor
 - **Gender**, **Event type**, **Age group**
@@ -28,6 +29,7 @@ An interactive map for discovering USTA and ITF Masters Tour tennis tournaments.
 ### Data Sources
 - **USTA**: scraped daily from the USTA TournamentDesk API
 - **ITF Masters Tour**: scraped weekly from the ITF calendar API + detail pages
+- **UTR**: scraped daily from the UTR Sports events search API (`eventTypes=tournament`)
 
 ## Quick Start
 
@@ -54,9 +56,10 @@ make help
 | make dev          | Run both dev servers concurrently       |
 | make dev-backend  | FastAPI on port 8000 only               |
 | make dev-frontend | Vite on port 5173 only                  |
-| make data         | Fetch USTA (10 pages) + ITF (2 months)  |
+| make data         | Fetch USTA + ITF + UTR                  |
 | make data-usta    | Fetch USTA only                         |
 | make data-itf     | Fetch ITF only                          |
+| make data-utr     | Fetch UTR tournaments only              |
 | make build        | Build frontend dist                     |
 | make deploy       | Build frontend + eb deploy              |
 | make status       | eb status                               |
@@ -78,6 +81,8 @@ tennis-tournament-map/
 │   ├── usta_data_manager.py    # USTA Parquet storage
 │   ├── itf_scraper.py          # ITF calendar + detail scraper
 │   ├── itf_data_manager.py     # ITF Parquet storage
+│   ├── utr_scraper.py          # UTR events API scraper
+│   ├── utr_data_manager.py     # UTR Parquet storage
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -87,7 +92,8 @@ tennis-tournament-map/
 │   └── vite.config.js
 ├── data/
 │   ├── usta_tournaments.parquet
-│   └── itf_tournaments.parquet
+│   ├── itf_tournaments.parquet
+│   └── utr_tournaments.parquet
 ├── .ebextensions/
 │   ├── 01_setup.config         # Uvicorn + ASGI
 │   ├── 02_cron.config          # Cron daemon + update scripts
@@ -106,6 +112,9 @@ tennis-tournament-map/
 | GET /api/usta-tournaments/{id} | Raw USTA tournament detail  |
 | GET /api/itf-tournaments       | All active ITF tournaments  |
 | GET /api/itf-tournaments/{id}  | Raw ITF tournament detail   |
+| GET /api/utr-tournaments       | All active UTR tournaments  |
+| GET /api/utr-tournaments/{id}  | Raw UTR tournament detail   |
+| GET /api/freshness             | Data scrape age             |
 | GET /api/health                | Health check                |
 
 ## Deployment (AWS Elastic Beanstalk)

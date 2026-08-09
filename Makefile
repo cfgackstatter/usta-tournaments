@@ -1,8 +1,8 @@
 .PHONY: install install-backend install-frontend \
-        dev dev-backend dev-frontend \
+        dev dev-backend dev-frontend dev-frontend-after-api \
         build deploy \
-        update update-usta update-itf \
-        data data-usta data-itf \
+        update update-usta update-itf update-utr \
+        data data-usta data-itf data-utr \
         logs ssh status health \
         clean clean-remote-data \
         help
@@ -33,8 +33,24 @@ dev-backend:
 dev-frontend:
 	cd frontend && npm run dev
 
+# Wait until API is up so Vite's auto-open doesn't race the uvicorn reloader
+dev-frontend-after-api:
+	@echo "Waiting for backend on :8000..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
+		if curl -sf http://127.0.0.1:8000/api/health >/dev/null 2>&1; then \
+			echo "Backend ready"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "Backend did not become ready in time"; \
+			exit 1; \
+		fi; \
+		sleep 0.5; \
+	done
+	$(MAKE) dev-frontend
+
 dev:
-	$(MAKE) -j2 dev-backend dev-frontend
+	$(MAKE) -j2 dev-backend dev-frontend-after-api
 
 # ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -44,7 +60,10 @@ data-usta:
 data-itf:
 	$(PYTHON_VENV) -m backend.main --update-itf --months-back 0 --months-ahead 2
 
-data: data-usta data-itf
+data-utr:
+	$(PYTHON_VENV) -m backend.main --update-utr --max-pages 20
+
+data: data-usta data-itf data-utr
 
 # ─── Build & Deploy ───────────────────────────────────────────────────────────
 
@@ -80,7 +99,10 @@ update-usta:
 update-itf:
 	eb ssh --command "sudo bash /usr/local/bin/update_itf.sh"
 
-update: update-usta update-itf
+update-utr:
+	eb ssh --command "sudo bash /usr/local/bin/update_utr.sh"
+
+update: update-usta update-itf update-utr
 
 # ─── Clean ────────────────────────────────────────────────────────────────────
 
@@ -90,7 +112,7 @@ clean:
 	find . -type f -name "*.pyc" -delete
 
 clean-remote-data:
-	eb ssh --command "sudo rm -f /var/app/shared/data/itf_tournaments.parquet /var/app/shared/data/usta_tournaments.parquet && ls -l /var/app/shared/data || true"
+	eb ssh --command "sudo rm -f /var/app/shared/data/itf_tournaments.parquet /var/app/shared/data/usta_tournaments.parquet /var/app/shared/data/utr_tournaments.parquet && ls -l /var/app/shared/data || true"
 
 # ─── Help ─────────────────────────────────────────────────────────────────────
 
@@ -107,9 +129,10 @@ help:
 	@echo "    make dev-frontend     Run Vite dev server only (port 3000, proxies /api → :8000)"
 	@echo ""
 	@echo "  Data"
-	@echo "    make data             Fetch USTA (10 pages) + ITF (2 months)"
+	@echo "    make data             Fetch USTA (10 pages) + ITF (2 months) + UTR"
 	@echo "    make data-usta        Fetch USTA only"
 	@echo "    make data-itf         Fetch ITF only"
+	@echo "    make data-utr         Fetch UTR tournaments only"
 	@echo ""
 	@echo "  Deploy"
 	@echo "    make build            Build frontend (npm run build)"
@@ -120,9 +143,10 @@ help:
 	@echo "    make health           eb health"
 	@echo "    make logs             eb logs"
 	@echo "    make ssh              eb ssh"
-	@echo "    make update           Run both update scripts on server"
+	@echo "    make update           Run all update scripts on server"
 	@echo "    make update-usta      Run USTA update script on server"
 	@echo "    make update-itf       Run ITF update script on server"
+	@echo "    make update-utr       Run UTR update script on server"
 	@echo ""
 	@echo "  Clean"
 	@echo "    make clean             Remove build artifacts and __pycache__"

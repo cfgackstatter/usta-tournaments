@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 
 from backend.usta_data_manager import USTADataManager
 from backend.itf_data_manager import ITFDataManager
+from backend.utr_data_manager import UTRDataManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,11 +30,13 @@ app.add_middleware(
 
 usta_data_manager = USTADataManager()
 itf_data_manager = ITFDataManager()
+utr_data_manager = UTRDataManager()
 
 
-# Canonical filter codes shared by USTA + ITF (frontend label maps use these keys)
+# Canonical filter codes shared across sources (frontend label maps use these keys)
 _SURFACE_ALIASES = {
     "hard": "hard",
+    "hardcourt": "hard",
     "grass": "grass",
     "clay": "clay",
     "carpet": "carpet",
@@ -70,6 +73,34 @@ def normalize_court_location(value: Any) -> str | None:
     if not text or text.lower() == "unknown":
         return None
     return _COURT_ALIASES.get(_norm_key(text), text.lower())
+
+
+def normalize_gender(value: Any) -> str | None:
+    """Map Boys/Men/Girls/Women/Co-ed variants onto shared filter codes."""
+    if value is None or isinstance(value, float):
+        return None
+    text = _norm_key(value)
+    if not text or text == "unknown":
+        return None
+    if text in ("men", "man", "male", "boys", "boy"):
+        return "boys"
+    if text in ("women", "woman", "female", "girls", "girl"):
+        return "girls"
+    if text in ("coed", "mixed"):
+        return text
+    return text
+
+
+def normalize_event_type(value: Any) -> str | None:
+    """Lowercase event type; unify Singles/Doubles order variants."""
+    if value is None or isinstance(value, float):
+        return None
+    text = str(value).strip().lower()
+    if not text or text == "unknown":
+        return None
+    if text in ("singles/doubles", "doubles/singles"):
+        return "singles/doubles"
+    return text
 
 
 # ---------- USTA Helpers ----------
@@ -125,8 +156,8 @@ def extract_event_details(tournament: Dict[str, Any]) -> List[Dict[str, Any]]:
         detail = {
             "surface": normalize_surface(event.get("surface")),
             "courtLocation": normalize_court_location(event.get("courtLocation")),
-            "gender": (division.get("gender") or "").strip().lower() or None,
-            "eventType": (division.get("eventType") or "").strip().lower() or None,
+            "gender": normalize_gender(division.get("gender")),
+            "eventType": normalize_event_type(division.get("eventType")),
             "todsCode": (age_category.get("todsCode") or "").strip() or None,
         }
 
@@ -312,6 +343,105 @@ def serialize_itf_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# ---------- UTR Helpers ----------
+
+def extract_utr_events(t: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build filterable event rows from UTR divisions (with simple defaults)."""
+    gender = normalize_gender(t.get("gender")) or "coed"
+    event_type = normalize_event_type(t.get("teamType")) or "singles"
+
+    divisions = t.get("eventDivisions") or []
+    events: List[Dict[str, Any]] = []
+
+    for division in divisions:
+        if not isinstance(division, dict):
+            continue
+        surfaces = division.get("surfaces") or []
+        environments = division.get("environments") or []
+        surface = normalize_surface((surfaces[0] or {}).get("value") if surfaces else None)
+        court = normalize_court_location(
+            (environments[0] or {}).get("value") if environments else None
+        )
+        events.append({
+            "surface": surface or "hard",
+            "courtLocation": court or "outdoor",
+            "gender": gender,
+            "eventType": event_type,
+            "todsCode": "30O",
+        })
+
+    if not events:
+        events.append({
+            "surface": "hard",
+            "courtLocation": "outdoor",
+            "gender": gender,
+            "eventType": event_type,
+            "todsCode": "30O",
+        })
+    return events
+
+
+def serialize_utr_tournament(t: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a raw UTR event dict into the map payload."""
+    locations = t.get("eventLocations") or []
+    loc = locations[0] if locations else {}
+    lat = loc.get("lat")
+    lng = loc.get("lng")
+    if (lat is None or lng is None) and loc.get("latLng"):
+        try:
+            lat, lng = loc["latLng"][0], loc["latLng"][1]
+        except (IndexError, TypeError, ValueError):
+            lat = lng = None
+    if lat is None or lng is None:
+        return {}
+
+    schedule = t.get("eventSchedule") or {}
+    tz_info = schedule.get("timeZone") or {}
+    tz_name = (tz_info.get("value") or "").strip() or None
+
+    start_utc = parse_utc(schedule.get("eventStartUtc"))
+    end_utc = parse_utc(schedule.get("eventEndUtc"))
+    close_utc = parse_utc(schedule.get("registrationEndUtc"))
+
+    location_parts = [
+        p for p in (
+            loc.get("googleFormattedName"),
+            loc.get("display"),
+            ", ".join(
+                x for x in (loc.get("cityName"), loc.get("stateAbbr")) if x
+            ),
+        )
+        if p
+    ]
+    # Prefer the most specific address string
+    location = location_parts[0] if location_parts else ""
+
+    level = (t.get("utrRange") or "").strip() or "Open"
+    event_id = t.get("id")
+
+    return {
+        "id":                    event_id,
+        "name":                  t.get("name"),
+        "latitude":              lat,
+        "longitude":             lng,
+        "startDate":             tournament_local_date(start_utc, tz_name),
+        "endDate":               tournament_local_date(end_utc, tz_name) or tournament_local_date(start_utc, tz_name),
+        "startDateTime":         to_utc_iso(start_utc),
+        "endDateTime":           to_utc_iso(end_utc),
+        "entriesCloseDateTime":  to_utc_iso(close_utc),
+        "timeZone":              tz_name,
+        "location":              location,
+        "city":                  loc.get("cityName") or "",
+        "state":                 loc.get("stateAbbr") or "",
+        "venueName":             (t.get("club") or {}).get("name") or "",
+        "categories":            ["UTR"],
+        "url":                   f"https://app.utrsports.net/events/{event_id}" if event_id else None,
+        "level":                 level,
+        "events":                extract_utr_events(t),
+        "source":                "UTR",
+    }
+
+
 # ---------- USTA Routes ----------
 
 @app.get("/api/usta-tournaments")
@@ -370,6 +500,35 @@ async def get_itf_tournament_detail(itf_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     
 
+# ---------- UTR Routes ----------
+
+@app.get("/api/utr-tournaments")
+async def get_utr_tournaments() -> List[Dict[str, Any]]:
+    try:
+        tournaments = utr_data_manager.get_tournaments()
+        map_data = [s for t in tournaments if (s := serialize_utr_tournament(t))]
+        logger.info("Returning %d UTR tournaments", len(map_data))
+        return map_data
+    except Exception as exc:
+        logger.error("Error fetching UTR tournaments: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/utr-tournaments/{tournament_id}")
+async def get_utr_tournament_detail(tournament_id: str) -> Dict[str, Any]:
+    try:
+        tournaments = utr_data_manager.get_tournaments()
+        tournament = next((t for t in tournaments if str(t.get("id")) == tournament_id), None)
+        if not tournament:
+            raise HTTPException(status_code=404, detail=f"UTR Tournament {tournament_id} not found")
+        return tournament
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error fetching UTR tournament detail: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 # ---------- Health / freshness ----------
 
 @app.get("/api/health")
@@ -379,10 +538,11 @@ async def health_check() -> Dict[str, str]:
 
 @app.get("/api/freshness")
 async def data_freshness() -> Dict[str, Any]:
-    """Return last-updated age for USTA and ITF parquet files."""
+    """Return last-updated age for USTA, ITF, and UTR parquet files."""
     return {
         "usta": usta_data_manager.get_freshness(),
         "itf": itf_data_manager.get_freshness(),
+        "utr": utr_data_manager.get_freshness(),
     }
 
 

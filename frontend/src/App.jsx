@@ -64,13 +64,17 @@ const blueIcon = createColoredIcon('#3b82f6')    // Blue - open
 const orangeIcon = createColoredIcon('#f97316')  // Orange - entries closed
 const redIcon = createColoredIcon('#ef4444')     // Red - started
 const darkGreenIcon = createColoredIcon('#15803d')  // Dark green - ITF
+const tealIcon = createColoredIcon('#89CFF0')       // Baby blue - UTR
 
 // Helper to get the right icon
 const getMarkerIcon = (status, source) => {
   switch(status) {
     case 'started': return redIcon
     case 'entries-closed': return orangeIcon
-    default: return source === 'ITF' ? darkGreenIcon : blueIcon
+    default:
+      if (source === 'ITF') return darkGreenIcon
+      if (source === 'UTR') return tealIcon
+      return blueIcon
   }
 }
 
@@ -184,7 +188,7 @@ function App() {
 
   // Level filter state (grouped by source for the dropdown UI)
   const [selectedLevels, setSelectedLevels] = useState(new Set())
-  const [availableLevels, setAvailableLevels] = useState({ usta: [], itf: [] })
+  const [availableLevels, setAvailableLevels] = useState({ usta: [], itf: [], utr: [] })
   const [levelDropdownOpen, setLevelDropdownOpen] = useState(false)
 
   // Event filter states - dropdown style like Level
@@ -219,6 +223,8 @@ function App() {
   const eventTypeLabels = {
     'singles': 'Singles',
     'doubles': 'Doubles',
+    'singles/doubles': 'Singles/Doubles',
+    'dingles': 'Dingles',
     'team': 'Team',
   }
 
@@ -253,29 +259,40 @@ function App() {
 
   const [dataFreshness, setDataFreshness] = useState(null)
 
-  // Fetch tournaments on mount
+  // Fetch tournaments on mount (retry briefly — backend may still be starting under make dev)
   useEffect(() => {
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+    const fetchJson = async (url, { optional = false, retries = 8 } = {}) => {
+      let lastError
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          const res = await fetch(url)
+          if (!res.ok) {
+            if (optional) return null
+            throw new Error(`Failed to fetch ${url}`)
+          }
+          return res.json()
+        } catch (err) {
+          lastError = err
+          if (optional && attempt === retries - 1) return null
+          await sleep(400 * (attempt + 1))
+        }
+      }
+      throw lastError
+    }
+
     Promise.all([
-      fetch('/api/usta-tournaments')
-        .then(res => {
-          if (!res.ok) throw new Error('Failed to fetch tournaments')
-          return res.json()
-        }),
-      fetch('/api/itf-tournaments')
-        .then(res => {
-          if (!res.ok) throw new Error('Failed to fetch ITF tournaments')
-          return res.json()
-        }),
-      fetch('/api/freshness')
-        .then(res => (res.ok ? res.json() : null))
-        .catch(() => null),
+      fetchJson('/api/usta-tournaments'),
+      fetchJson('/api/itf-tournaments'),
+      fetchJson('/api/utr-tournaments'),
+      fetchJson('/api/freshness', { optional: true }),
     ])
-      .then(([ustaData, itfData, freshness]) => {
-        const combined = [...ustaData, ...itfData]
+      .then(([ustaData, itfData, utrData, freshness]) => {
+        const combined = [...ustaData, ...itfData, ...utrData]
         setAllTournaments(combined)
         setDataFreshness(freshness)
 
-        // Categories: USTA-prefixed groups + ITF, with a stable preferred order
+        // Categories: USTA-prefixed groups + ITF + UTR, with a stable preferred order
         const categorySet = new Set()
         combined.forEach(t => {
           (t.categories || []).forEach(c => {
@@ -288,6 +305,7 @@ function App() {
           'USTA Wheelchair',
           'USTA Wtnplay',
           'ITF',
+          'UTR',
         ]
         const categories = [
           ...categoryOrder.filter(c => categorySet.has(c)),
@@ -295,21 +313,24 @@ function App() {
         ]
         setAvailableCategories(categories)
 
-        // Default: USTA Adult + ITF
+        // Default: USTA Adult + ITF + UTR
         const defaultCategories = new Set(
-          ['USTA Adult', 'ITF'].filter(c => categorySet.has(c))
+          ['USTA Adult', 'ITF', 'UTR'].filter(c => categorySet.has(c))
         )
         setSelectedCategories(defaultCategories)
 
-        // Levels grouped by source (ITF levels no longer carry an "ITF " prefix)
+        // Levels grouped by source
         const ustaLevels = [...new Set(
           ustaData.map(t => t.level).filter(Boolean)
         )].sort()
         const itfLevels = [...new Set(
           itfData.map(t => t.level).filter(Boolean)
         )].sort()
-        setAvailableLevels({ usta: ustaLevels, itf: itfLevels })
-        setSelectedLevels(new Set([...ustaLevels, ...itfLevels]))
+        const utrLevels = [...new Set(
+          utrData.map(t => t.level).filter(Boolean)
+        )].sort()
+        setAvailableLevels({ usta: ustaLevels, itf: itfLevels, utr: utrLevels })
+        setSelectedLevels(new Set([...ustaLevels, ...itfLevels, ...utrLevels]))
 
         // Extract unique event properties from all 5 fields
         const surfaceSet = new Set()
@@ -449,6 +470,7 @@ function App() {
   const allAvailableLevels = () => [
     ...(availableLevels.usta || []),
     ...(availableLevels.itf || []),
+    ...(availableLevels.utr || []),
   ]
 
   const selectAllLevels = () => {
@@ -606,6 +628,12 @@ function App() {
                 ? formatAge(dataFreshness.itf.age_hours)
                 : 'no data'}
             </span>
+            <span className="freshness-sep">·</span>
+            <span>
+              UTR {dataFreshness.utr?.available
+                ? formatAge(dataFreshness.utr.age_hours)
+                : 'no data'}
+            </span>
           </div>
         )}
 
@@ -703,6 +731,23 @@ function App() {
                     <div className="type-checkboxes">
                       {availableLevels.itf.map(level => (
                         <label key={`itf-${level}`} className="type-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={selectedLevels.has(level)}
+                            onChange={() => toggleLevel(level)}
+                          />
+                          <span>{level}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {availableLevels.utr?.length > 0 && (
+                  <div className="filter-section">
+                    <div className="filter-section-title">UTR</div>
+                    <div className="type-checkboxes">
+                      {availableLevels.utr.map(level => (
+                        <label key={`utr-${level}`} className="type-checkbox">
                           <input
                             type="checkbox"
                             checked={selectedLevels.has(level)}
@@ -940,7 +985,7 @@ function App() {
               
               return (
                 <Marker 
-                  key={tournament.id}
+                  key={`${tournament.source}-${tournament.id}`}
                   position={[tournament.latitude, tournament.longitude]}
                   icon={icon}
                 >
@@ -958,7 +1003,8 @@ function App() {
                           <span>{formatDateRange(tournament)}</span>
                         </div>
 
-                        {tournament.source === 'USTA' && tournament.entriesCloseDateTime && (
+                        {(tournament.source === 'USTA' || tournament.source === 'UTR') &&
+                          tournament.entriesCloseDateTime && (
                           <div className="detail-row">
                             <span className="icon">⏰</span>
                             <span>Entries close {formatEntriesClose(tournament.entriesCloseDateTime)}</span>
